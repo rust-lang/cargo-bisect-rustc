@@ -532,6 +532,9 @@ fn run() -> Result<(), Error> {
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
                 let status = t.test(&cfg, &dl_spec);
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
                 // we want to fail, so a successful build doesn't satisfy us
                 if status.success() {
                     Satisfies::No
@@ -600,12 +603,21 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 }
                 nightly_date = nightly_date - chrono::Duration::days(jump_length);
                 jump_length *= 2;
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
             }
             Err(InstallError::NotFound { .. }) => {
                 // go back just one day, presumably missing nightly
                 nightly_date = nightly_date - chrono::Duration::days(1);
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
             }
             Err(e) => {
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
                 return Err(e)?;
             }
         }
@@ -631,6 +643,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 } else {
                     Satisfies::Yes
                 };
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
                 eprintln!("tested {}, got {}", t, r);
                 r
             }
@@ -752,6 +767,9 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
                     Satisfies::Yes
                 };
                 eprintln!("tested {}, got {}", t, r);
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
                 r
             }
             Err(err) => {
