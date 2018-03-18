@@ -109,6 +109,12 @@ struct Opts {
     #[structopt(long = "by-commit",
                 help = "without specifying bounds, bisect via commit artifacts")]
     by_commit: bool,
+
+    #[structopt(long = "install", help = "install the given artifact")]
+    install: Option<Bound>,
+
+    #[structopt(long = "force-install", help = "force installation over existing artifacts")]
+    force_install: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -204,6 +210,33 @@ struct DownloadParams {
     url_prefix: String,
     install_dir: PathBuf,
     install_cargo: bool,
+    force_install: bool,
+}
+
+impl DownloadParams {
+    fn for_ci(cfg: &Config) -> Self {
+        let url_prefix = format!(
+            "{}/rustc-builds{}",
+            CI_SERVER,
+            if cfg.args.alt { "-alt" } else { "" }
+        );
+
+        DownloadParams {
+            url_prefix: url_prefix,
+            install_dir: cfg.toolchains_path.clone(),
+            install_cargo: cfg.args.with_cargo,
+            force_install: cfg.args.force_install,
+        }
+    }
+
+    fn for_nightly(cfg: &Config) -> Self {
+        DownloadParams {
+            url_prefix: NIGHTLY_SERVER.to_string(),
+            install_dir: cfg.toolchains_path.clone(),
+            install_cargo: cfg.args.with_cargo,
+            force_install: cfg.args.force_install,
+        }
+    }
 }
 
 #[derive(Fail, Debug)]
@@ -365,6 +398,10 @@ impl Toolchain {
         debug!("installing {}", self);
         let tmpdir = TempDir::new(&self.rustup_name()).map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
+        if dl_params.force_install {
+            let _ = fs::remove_dir_all(&dest);
+        }
+
         if dest.is_dir() {
             // already installed
             return Ok(());
@@ -511,6 +548,47 @@ fn run() -> Result<(), Error> {
 
     let client = Client::new();
 
+    if let Some(ref bound) = cfg.args.install {
+        install(&cfg, &client, bound)
+    } else {
+        bisect(&cfg, &client)
+    }
+}
+
+fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
+    match *bound {
+        Bound::Commit(ref sha) => {
+            let sha = git::expand_commit(sha)?;
+            let mut t = Toolchain {
+                spec: ToolchainSpec::Ci {
+                    commit: sha.clone(),
+                    alt: cfg.args.alt,
+                },
+                host: cfg.args.host.clone(),
+                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
+            };
+            t.std_targets.sort();
+            t.std_targets.dedup();
+            let dl_params = DownloadParams::for_ci(cfg);
+            t.install(client, &dl_params)?;
+        }
+        Bound::Date(date) => {
+            let mut t = Toolchain {
+                spec: ToolchainSpec::Nightly { date: date },
+                host: cfg.args.host.clone(),
+                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
+            };
+            t.std_targets.sort();
+            t.std_targets.dedup();
+            let dl_params = DownloadParams::for_nightly(cfg);
+            t.install(client, &dl_params)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     let BisectionResult {
         searched: toolchains,
         dl_spec,
@@ -566,12 +644,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         bail!("cannot bisect nightlies with --alt: not supported");
     }
 
-    let dl_spec = DownloadParams {
-        url_prefix: NIGHTLY_SERVER.to_string(),
-        install_dir: cfg.toolchains_path.clone(),
-        install_cargo: cfg.args.with_cargo,
-    };
-
+    let dl_spec = DownloadParams::for_nightly(&cfg);
     let now = chrono::Utc::now();
     let today = now.date();
     let mut nightly_date = today;
@@ -687,18 +760,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 }
 
 fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
-    let url_prefix = format!(
-        "{}/rustc-builds{}",
-        CI_SERVER,
-        if cfg.args.alt { "-alt" } else { "" }
-    );
-
-    let dl_spec = DownloadParams {
-        url_prefix: url_prefix,
-        install_dir: cfg.toolchains_path.clone(),
-        install_cargo: cfg.args.with_cargo,
-    };
-
+    let dl_spec = DownloadParams::for_ci(cfg);
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
         sha
     } else {

@@ -60,6 +60,12 @@ fn get_repo() -> Result<Repository, Error> {
     }
 }
 
+pub fn expand_commit(sha: &str) -> Result<String, Error> {
+    let repo = get_repo()?;
+    let rev = lookup_rev(&repo, sha)?;
+    Ok(rev.id().to_string())
+}
+
 /// Returns the bors merge commits between the two specified boundaries
 /// (boundaries inclusive).
 pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<Commit>, Error> {
