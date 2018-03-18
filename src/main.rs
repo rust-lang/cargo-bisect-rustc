@@ -336,7 +336,7 @@ impl Toolchain {
 
     fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
         // do things with this toolchain
-        let mut cargo = Command::new(env::var_os("CARGO").unwrap_or(OsString::from("cargo")));
+        let mut cargo = Command::new("cargo");
         cargo.arg(&format!("+{}", self.rustup_name()));
         cargo.current_dir(&cfg.args.test_dir);
         if cfg.args.cargo_args.is_empty() {
