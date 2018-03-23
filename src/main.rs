@@ -647,7 +647,12 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let dl_spec = DownloadParams::for_nightly(&cfg);
     let now = chrono::Utc::now();
     let today = now.date();
-    let mut nightly_date = today;
+    let (mut nightly_date, has_start) = if let Some(Bound::Date(date)) = cfg.args.start {
+        (date, true)
+    } else {
+        (today, false)
+    };
+
     let mut jump_length = 1;
     // before this date we didn't have -std packages
     let end_at = chrono::Date::from_utc(
@@ -655,7 +660,11 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         chrono::Utc,
     );
     let mut first_success = None;
-    let mut last_failure = today;
+    let mut last_failure = if let Some(Bound::Date(date)) = cfg.args.end {
+        date
+    } else {
+        today
+    };
     while nightly_date > end_at {
         let mut t = Toolchain {
             spec: ToolchainSpec::Nightly { date: nightly_date },
@@ -671,6 +680,8 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 if status.success() {
                     first_success = Some(nightly_date);
                     break;
+                } else if has_start {
+                    return Err(format_err!("the --start nightly has the regression"))?;
                 } else {
                     last_failure = nightly_date;
                 }
@@ -685,6 +696,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 nightly_date = nightly_date - chrono::Duration::days(1);
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
+                }
+                if has_start {
+                    return Err(format_err!("could not find the --start nightly"))?;
                 }
             }
             Err(e) => {
