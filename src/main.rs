@@ -99,11 +99,11 @@ struct Opts {
     cargo_args: Vec<OsString>,
 
     #[structopt(long = "start",
-                help = "the left-bound for the search; this point should *not* pass the test")]
+                help = "the left-bound for the search; this point should *not* have the regression")]
     start: Option<Bound>,
 
     #[structopt(long = "end",
-                help = "the right-bound for the search; this point should pass the test")]
+                help = "the right-bound for the search; this point should have the regression")]
     end: Option<Bound>,
 
     #[structopt(long = "by-commit",
