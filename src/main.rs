@@ -208,6 +208,7 @@ impl fmt::Display for Toolchain {
 #[derive(Clone, Debug)]
 struct DownloadParams {
     url_prefix: String,
+    tmp_dir: PathBuf,
     install_dir: PathBuf,
     install_cargo: bool,
     force_install: bool,
@@ -223,6 +224,7 @@ impl DownloadParams {
 
         DownloadParams {
             url_prefix: url_prefix,
+            tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
             force_install: cfg.args.force_install,
@@ -232,6 +234,7 @@ impl DownloadParams {
     fn for_nightly(cfg: &Config) -> Self {
         DownloadParams {
             url_prefix: NIGHTLY_SERVER.to_string(),
+            tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
             force_install: cfg.args.force_install,
@@ -396,7 +399,8 @@ impl Toolchain {
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
         debug!("installing {}", self);
-        let tmpdir = TempDir::new(&self.rustup_name()).map_err(InstallError::TempDir)?;
+        let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
+            .map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
         if dl_params.force_install {
             let _ = fs::remove_dir_all(&dest);
@@ -472,6 +476,7 @@ impl Toolchain {
 
 struct Config {
     args: Opts,
+    rustup_tmp_path: PathBuf,
     toolchains_path: PathBuf,
     target: String,
     is_commit: bool,
@@ -500,6 +505,15 @@ impl Config {
                 home
             }
         };
+
+        // We will download and extract the tarballs into this directory before installing.
+        // Using `~/.rustup/tmp` instead of $TMPDIR ensures we could always perform installation by
+        // renaming instead of copying the whole directory.
+        let rustup_tmp_path = toolchains_path.join("tmp");
+        if !rustup_tmp_path.exists() {
+            fs::create_dir(&rustup_tmp_path)?;
+        }
+
         toolchains_path.push("toolchains");
         if !toolchains_path.is_dir() {
             bail!(
@@ -536,6 +550,7 @@ impl Config {
             args,
             target,
             toolchains_path,
+            rustup_tmp_path,
         })
     }
 }
