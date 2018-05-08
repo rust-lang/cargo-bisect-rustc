@@ -23,6 +23,7 @@ extern crate structopt;
 extern crate tar;
 extern crate tee;
 extern crate tempdir;
+extern crate toml;
 extern crate xz2;
 
 use std::fmt;
@@ -42,6 +43,7 @@ use reqwest::{Client, Response};
 use pbr::{ProgressBar, Units};
 use tee::TeeReader;
 use tar::Archive;
+use toml::Value;
 use reqwest::header::ContentLength;
 use xz2::read::XzDecoder;
 use flate2::read::GzDecoder;
@@ -140,6 +142,48 @@ impl FromStr for Bound {
         match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
             Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
             Err(_) => Ok(Bound::Commit(s.to_string())),
+        }
+    }
+}
+
+impl Bound {
+    fn as_commit(self) -> Result<Self, Error> {
+        match self {
+            Bound::Commit(commit) => Ok(Bound::Commit(commit)),
+            Bound::Date(date) => {
+                let date_str = date.format("%Y-%m-%d");
+                let url = format!("{}/{}/channel-rust-nightly.toml", NIGHTLY_SERVER, date_str);
+
+                eprintln!("fetching {}", url);
+                let client = Client::new();
+                let name = format!("nightly manifest {}", date_str);
+                let (response, mut bar) = download_progress(&client, &name, &url)?;
+                let mut response = TeeReader::new(response, &mut bar);
+                let mut toml_buf = String::new();
+                response.read_to_string(&mut toml_buf)?;
+
+                let manifest = toml_buf.parse::<Value>().unwrap();
+
+                let commit = match manifest {
+                    Value::Table(t) => match t.get("pkg") {
+                        Some(&Value::Table(ref t)) => match t.get("rust") {
+                            Some(&Value::Table(ref t)) => match t.get("git_commit_hash") {
+                                Some(&Value::String(ref hash)) => hash.to_owned(),
+                                _ => bail!(
+                                    "not a rustup manifest (no valid git_commit_hash key under rust"
+                                ),
+                            },
+                            _ => bail!("not a rustup manifest (no rust key under pkg)"),
+                        },
+                        _ => bail!("not a rustup manifest (missing pkg key)"),
+                    },
+                    _ => bail!("not a rustup manifest (not a table at root)"),
+                };
+
+                eprintln!("converted {} to {}", date_str, commit);
+
+                Ok(Bound::Commit(commit))
+            }
         }
     }
 }
@@ -540,7 +584,7 @@ impl Config {
         }
 
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
-        let args = args;
+        let mut args = args;
 
         let mut toolchains_path = match env::var_os("RUSTUP_HOME") {
             Some(h) => PathBuf::from(h),
@@ -586,8 +630,14 @@ impl Config {
         };
 
         if is_commit == Some(false) && args.by_commit {
-            // FIXME: In theory, we could use the date range to narrow down the commit list...
-            bail!("cannot bisect by-commit if specifying date range");
+            eprintln!("finding commit range that corresponds to dates specified");
+            match (args.start, args.end) {
+                (Some(b1), Some(b2)) => {
+                    args.start = Some(b1.as_commit()?);
+                    args.end = Some(b2.as_commit()?);
+                }
+                _ => unreachable!(),
+            }
         }
 
         Ok(Config {
