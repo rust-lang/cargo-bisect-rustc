@@ -11,6 +11,7 @@ repository = "https://github.com/rust-lang-nursery/cargo-bisect-rustc"
 version = "0.1.0"
 
 [dependencies]
+dialoguer = "0.1.0"
 env_logger = "0.5.0"
 failure = "0.1"
 flate2 = "1.0.1"

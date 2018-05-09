@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 extern crate chrono;
+extern crate dialoguer;
 extern crate env_logger;
 #[macro_use]
 extern crate failure;
@@ -27,12 +28,13 @@ extern crate xz2;
 use std::fmt;
 use std::fs;
 use std::env;
-use std::process::{self, Command};
+use std::process::{self, Command, Stdio};
 use std::path::{Path, PathBuf};
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::ffi::OsString;
 use std::str::FromStr;
 
+use dialoguer::Select;
 use tempdir::TempDir;
 use failure::Error;
 use structopt::StructOpt;
@@ -90,6 +92,11 @@ struct Opts {
                 help = "Directory to test; this is where you usually run `cargo build`",
                 parse(from_os_str))]
     test_dir: PathBuf,
+
+    #[structopt(default_value = "false", long = "prompt",
+                help = "Display a prompt in between runs to allow for manually \
+                        inspecting output and retrying.")]
+    prompt: bool,
 
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbosity: usize,
@@ -362,6 +369,11 @@ enum InstallError {
     Move(#[cause] io::Error),
 }
 
+enum TestOutcome {
+    Baseline,
+    Regressed,
+}
+
 impl Toolchain {
     fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
         eprintln!("uninstalling {}", self);
@@ -370,31 +382,64 @@ impl Toolchain {
         Ok(())
     }
 
-    fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
+    fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> TestOutcome {
+        if cfg.args.prompt {
+            loop {
+                let status = self.run_cargo(cfg, dl_spec);
+
+                eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
+                eprintln!("please select an action to take:");
+
+                match Select::new()
+                    .items(&["retry", "mark baseline", "mark regressed"])
+                    .default(0)
+                    .interact()
+                    .unwrap()
+                {
+                    0 => continue,
+                    1 => break TestOutcome::Baseline,
+                    2 => break TestOutcome::Regressed,
+                    _ => unreachable!(),
+                }
+            }
+        } else {
+            if self.run_cargo(cfg, dl_spec).success() {
+                TestOutcome::Baseline
+            } else {
+                TestOutcome::Regressed
+            }
+        }
+    }
+
+    fn run_cargo(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
         // do things with this toolchain
         let mut cargo = Command::new("cargo");
         cargo.arg(&format!("+{}", self.rustup_name()));
         cargo.current_dir(&cfg.args.test_dir);
+        cargo.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
         if cfg.args.cargo_args.is_empty() {
             cargo.arg("build");
         } else {
             cargo.args(&cfg.args.cargo_args);
         }
-        let output = match cargo.output() {
-            Ok(output) => output,
+        if cfg.args.emit_cargo_output() || cfg.args.prompt {
+            cargo.stdout(Stdio::inherit());
+            cargo.stderr(Stdio::inherit());
+        } else {
+            cargo.stdout(Stdio::null());
+            cargo.stderr(Stdio::null());
+        }
+        let status = match cargo.status() {
+            Ok(status) => status,
             Err(err) => {
                 panic!("failed to run {:?}: {:?}", cargo, err);
             }
         };
-        if cfg.args.emit_cargo_output() {
-            io::stderr().write_all(&output.stderr).unwrap();
-            io::stdout().write_all(&output.stdout).unwrap();
-        }
         if !cfg.args.preserve {
             let _ = self.remove(dl_spec);
         }
 
-        output.status
+        status
     }
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
@@ -624,15 +669,14 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         let t = &toolchains[found];
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let status = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg, &dl_spec);
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
                 // we want to fail, so a successful build doesn't satisfy us
-                if status.success() {
-                    Satisfies::No
-                } else {
-                    Satisfies::Yes
+                match outcome {
+                    TestOutcome::Baseline => Satisfies::No,
+                    TestOutcome::Regressed => Satisfies::Yes,
                 }
             }
             Err(_) => {
@@ -691,8 +735,8 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         eprintln!("checking {}", t);
         match t.install(client, &dl_spec) {
             Ok(()) => {
-                let status = t.test(&cfg, &dl_spec);
-                if status.success() {
+                let outcome = t.test(&cfg, &dl_spec);
+                if let TestOutcome::Baseline = outcome {
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
@@ -738,12 +782,11 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let found = least_satisfying(&toolchains, |t| {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let status = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg, &dl_spec);
                 // we want to fail, so a successful build doesn't satisfy us
-                let r = if status.success() {
-                    Satisfies::No
-                } else {
-                    Satisfies::Yes
+                let r = match outcome {
+                    TestOutcome::Baseline => Satisfies::No,
+                    TestOutcome::Regressed => Satisfies::Yes,
                 };
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
@@ -850,12 +893,11 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     let found = least_satisfying(&toolchains, |t| {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let status = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg, &dl_spec);
                 // we want to fail, so a successful build doesn't satisfy us
-                let r = if status.success() {
-                    Satisfies::No
-                } else {
-                    Satisfies::Yes
+                let r = match outcome {
+                    TestOutcome::Regressed => Satisfies::Yes,
+                    TestOutcome::Baseline => Satisfies::No,
                 };
                 eprintln!("tested {}, got {}", t, r);
                 if !cfg.args.preserve {
