@@ -17,7 +17,23 @@ where
     let mut predicate = |idx: usize| *cache.entry(idx).or_insert_with(|| predicate(&slice[idx]));
     let mut unknown_ranges: Vec<(usize, usize)> = Vec::new();
     let mut rm_no = 0; // presume that the slice starts with a no
+
+    eprintln!("verifying the start of the range does not reproduce the regression");
+    match predicate(rm_no) {
+        Satisfies::No => {
+            eprintln!("confirmed the start of the range does not reproduce the regression")
+        }
+        _ => panic!("the start of the range to test must not reproduce the regression"),
+    }
+
     let mut lm_yes = slice.len() - 1; // presume that the slice ends with a yes
+
+    eprintln!("verifying the end of the range reproduces the regression");
+    match predicate(lm_yes) {
+        Satisfies::Yes => eprintln!("confirmed the end of the range reproduces the regression"),
+        _ => panic!("the end of the range to test must reproduce the regression"),
+    }
+
     let mut next = (rm_no + lm_yes) / 2;
 
     loop {
