@@ -65,6 +65,7 @@ mod least_satisfying;
 use least_satisfying::{least_satisfying, Satisfies};
 
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
+    eprintln!("fetching commits from {} to {}", start, end);
     let commits = git::get_commits_between(start, end)?;
     assert_eq!(commits.first().expect("at least one commit").sha, start);
 
@@ -882,6 +883,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 }
 
 fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
+    eprintln!("bisecting ci builds");
     let dl_spec = DownloadParams::for_ci(cfg);
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
         sha
@@ -894,6 +896,8 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     } else {
         "origin/master"
     };
+
+    eprintln!("starting at {}, ending at {}", start, end);
 
     let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
@@ -923,6 +927,8 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
         }
     }
 
+    eprintln!("validated commits found, specifying toolchains");
+
     let toolchains = commits
         .into_iter()
         .map(|commit| {
@@ -940,9 +946,12 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
         })
         .collect::<Vec<_>>();
 
+    eprintln!("testing commits");
     let found = least_satisfying(&toolchains, |t| {
+        eprintln!("installing {}", t);
         match t.install(&client, &dl_spec) {
             Ok(()) => {
+                eprintln!("testing {}", t);
                 let outcome = t.test(&cfg, &dl_spec);
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {

@@ -46,17 +46,23 @@ fn get_repo() -> Result<Repository, Error> {
     let loc = Path::new("rust.git");
     match (RUST_SRC_REPO, loc.exists()) {
         (Some(_), _) | (_, true) => {
-            let repo = Repository::open(RUST_SRC_REPO.map(Path::new).unwrap_or(loc))?;
+            let path = RUST_SRC_REPO.map(Path::new).unwrap_or(loc);
+            eprintln!("opening existing repository at {:?}", path);
+            let repo = Repository::open(path)?;
             {
+                eprintln!("refreshing repository");
                 let mut remote = repo.find_remote("origin")
                     .or_else(|_| repo.remote_anonymous("origin"))?;
                 remote.fetch(&["master"], None, None)?;
             }
             Ok(repo)
         }
-        (None, false) => Ok(RepoBuilder::new()
-            .bare(true)
-            .clone(RUST_SRC_URL, Path::new("rust.git"))?),
+        (None, false) => {
+            eprintln!("cloning rust repository");
+            Ok(RepoBuilder::new()
+                .bare(true)
+                .clone(RUST_SRC_URL, Path::new("rust.git"))?)
+        }
     }
 }
 
@@ -70,7 +76,9 @@ pub fn expand_commit(sha: &str) -> Result<String, Error> {
 /// (boundaries inclusive).
 pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<Commit>, Error> {
     let repo = get_repo()?;
+    eprintln!("looking up first commit");
     let mut first = lookup_rev(&repo, first_commit)?;
+    eprintln!("looking up second commit");
     let last = lookup_rev(&repo, last_commit)?;
 
     // Sanity check -- our algorithm below only works reliably if the
@@ -82,6 +90,8 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<
             None => bail!("No author for {}", c.id()),
         }
     };
+
+    eprintln!("checking that commits are by bors and thus have ci artifacts...");
     assert_by_bors(&first)?;
     assert_by_bors(&last)?;
     // Now find the commits
@@ -89,6 +99,7 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<
     // to only get merge commits.
     // This uses the fact that all bors merge commits have the earlier
     // merge commit as their first parent.
+    eprintln!("finding bors merge commits");
     let mut res = Vec::new();
     let mut current = last;
     loop {
@@ -117,5 +128,9 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<
     res.push(Commit::from_git2_commit(&mut first));
     // Reverse in order to obtain chronological order
     res.reverse();
+    eprintln!(
+        "found {} bors merge commits in the specified range",
+        res.len()
+    );
     Ok(res)
 }
