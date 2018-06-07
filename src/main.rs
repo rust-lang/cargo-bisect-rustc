@@ -461,6 +461,8 @@ impl Toolchain {
         let mut cargo = Command::new("cargo");
         cargo.arg(&format!("+{}", self.rustup_name()));
         cargo.current_dir(&cfg.args.test_dir);
+        let _ = fs::remove_dir_all(
+            cfg.args.test_dir.join(&format!("target-{}", self.rustup_name())));
         cargo.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
         if cfg.args.cargo_args.is_empty() {
             cargo.arg("build");
