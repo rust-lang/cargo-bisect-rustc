@@ -436,14 +436,14 @@ impl Toolchain {
                 eprintln!("please select an action to take:");
 
                 match Select::new()
-                    .items(&["retry", "mark baseline", "mark regressed"])
+                    .items(&["mark regressed", "mark baseline", "retry"])
                     .default(0)
                     .interact()
                     .unwrap()
                 {
-                    0 => continue,
+                    0 => break TestOutcome::Regressed,
                     1 => break TestOutcome::Baseline,
-                    2 => break TestOutcome::Regressed,
+                    2 => continue,
                     _ => unreachable!(),
                 }
             }
