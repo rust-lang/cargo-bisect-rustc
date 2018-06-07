@@ -798,7 +798,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                     last_failure = nightly_date;
                 }
                 nightly_date = nightly_date - chrono::Duration::days(jump_length);
-                jump_length *= 2;
+                if jump_length < 30 {
+                    jump_length *= 2;
+                }
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
