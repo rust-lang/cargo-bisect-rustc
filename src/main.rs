@@ -915,16 +915,6 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
         );
     }
 
-    if let Some(ref c) = commits.first() {
-        if !c.sha.starts_with(start) {
-            bail!(
-                "expected to start with {}, but started with {}",
-                start,
-                c.sha
-            );
-        }
-    }
-
     if let Some(ref c) = commits.last() {
         if end != "origin/master" && !c.sha.starts_with(end) {
             bail!("expected to end with {}, but ended with {}", end, c.sha);
