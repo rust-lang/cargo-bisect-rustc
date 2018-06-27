@@ -96,7 +96,7 @@ struct Opts {
                 parse(from_os_str))]
     test_dir: PathBuf,
 
-    #[structopt(default_value = "false", long = "prompt",
+    #[structopt(long = "prompt",
                 help = "Display a prompt in between runs to allow for manually \
                         inspecting output and retrying.")]
     prompt: bool,
