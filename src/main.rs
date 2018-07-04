@@ -52,7 +52,7 @@ use xz2::read::XzDecoder;
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
 ///
-/// Due to our deletion policy which expires builds after 90 days, the build
+/// Due to our deletion policy which expires builds after 167 days, the build
 /// artifacts of this commit itself is no longer available, so this may not be entirely useful;
 /// however, it does limit the amount of commits somewhat.
 const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
@@ -922,11 +922,11 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
 
     let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
-    commits.retain(|c| now.signed_duration_since(c.date).num_days() < 90);
+    commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
 
     if commits.is_empty() {
         bail!(
-            "no commits between {} and {} within last 90 days",
+            "no commits between {} and {} within last 167 days",
             start,
             end
         );
