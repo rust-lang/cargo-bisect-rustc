@@ -26,28 +26,28 @@ extern crate tempdir;
 extern crate toml;
 extern crate xz2;
 
+use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
-use std::env;
-use std::process::{self, Command, Stdio};
-use std::path::{Path, PathBuf};
 use std::io::{self, Read};
-use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command, Stdio};
 use std::str::FromStr;
 
-use dialoguer::Select;
-use tempdir::TempDir;
-use failure::Error;
-use structopt::StructOpt;
-use reqwest::{Client, Response};
-use pbr::{ProgressBar, Units};
-use tee::TeeReader;
-use tar::Archive;
-use toml::Value;
-use reqwest::header::ContentLength;
-use xz2::read::XzDecoder;
-use flate2::read::GzDecoder;
 use chrono::{Date, Duration, Utc};
+use dialoguer::Select;
+use failure::Error;
+use flate2::read::GzDecoder;
+use pbr::{ProgressBar, Units};
+use reqwest::header::ContentLength;
+use reqwest::{Client, Response};
+use structopt::StructOpt;
+use tar::Archive;
+use tee::TeeReader;
+use tempdir::TempDir;
+use toml::Value;
+use xz2::read::XzDecoder;
 
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
@@ -74,8 +74,9 @@ fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
 
 #[derive(Debug, StructOpt)]
 struct Opts {
-    #[structopt(short = "a", long = "alt",
-                help = "Download the alt build instead of normal build")]
+    #[structopt(
+        short = "a", long = "alt", help = "Download the alt build instead of normal build"
+    )]
     alt: bool,
 
     #[structopt(long = "host", help = "Host triple for the compiler", default_value = "unknown")]
@@ -87,37 +88,49 @@ struct Opts {
     #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[structopt(long = "with-cargo",
-                help = "Download cargo, by default the installed cargo is used")]
+    #[structopt(
+        long = "with-cargo", help = "Download cargo, by default the installed cargo is used"
+    )]
     with_cargo: bool,
 
-    #[structopt(long = "test-dir",
-                help = "Directory to test; this is where you usually run `cargo build`",
-                parse(from_os_str))]
+    #[structopt(
+        long = "test-dir",
+        help = "Directory to test; this is where you usually run `cargo build`",
+        parse(from_os_str)
+    )]
     test_dir: PathBuf,
 
-    #[structopt(long = "prompt",
-                help = "Display a prompt in between runs to allow for manually \
-                        inspecting output and retrying.")]
+    #[structopt(
+        long = "prompt",
+        help = "Display a prompt in between runs to allow for manually \
+                inspecting output and retrying."
+    )]
     prompt: bool,
 
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
-    #[structopt(help = "Arguments to pass to cargo when running",
-                raw(multiple = "true", last = "true"), parse(from_os_str))]
+    #[structopt(
+        help = "Arguments to pass to cargo when running",
+        raw(multiple = "true", last = "true"),
+        parse(from_os_str)
+    )]
     cargo_args: Vec<OsString>,
 
-    #[structopt(long = "start",
-                help = "the left-bound for the search; this point should *not* have the regression")]
+    #[structopt(
+        long = "start",
+        help = "the left-bound for the search; this point should *not* have the regression"
+    )]
     start: Option<Bound>,
 
-    #[structopt(long = "end",
-                help = "the right-bound for the search; this point should have the regression")]
+    #[structopt(
+        long = "end", help = "the right-bound for the search; this point should have the regression"
+    )]
     end: Option<Bound>,
 
-    #[structopt(long = "by-commit",
-                help = "without specifying bounds, bisect via commit artifacts")]
+    #[structopt(
+        long = "by-commit", help = "without specifying bounds, bisect via commit artifacts"
+    )]
     by_commit: bool,
 
     #[structopt(long = "install", help = "install the given artifact")]
@@ -462,8 +475,12 @@ impl Toolchain {
         cargo.arg(&format!("+{}", self.rustup_name()));
         cargo.current_dir(&cfg.args.test_dir);
         let _ = fs::remove_dir_all(
-            cfg.args.test_dir.join(&format!("target-{}", self.rustup_name())));
+            cfg.args
+                .test_dir
+                .join(&format!("target-{}", self.rustup_name())),
+        );
         cargo.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
+
         if cfg.args.cargo_args.is_empty() {
             cargo.arg("build");
         } else {
