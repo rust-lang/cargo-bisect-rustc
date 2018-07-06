@@ -139,8 +139,12 @@ struct Opts {
     #[structopt(long = "force-install", help = "force installation over existing artifacts")]
     force_install: bool,
 
-    #[structopt(long = "script", help = "script to run instead of cargo to test for regression")]
-    script: Option<String>,
+    #[structopt(
+        long = "script",
+        help = "script to run instead of cargo to test for regression",
+        parse(from_os_str)
+    )]
+    script: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
