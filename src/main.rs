@@ -138,6 +138,9 @@ struct Opts {
 
     #[structopt(long = "force-install", help = "force installation over existing artifacts")]
     force_install: bool,
+
+    #[structopt(long = "script", help = "script to run instead of cargo to test for regression")]
+    script: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -443,7 +446,7 @@ impl Toolchain {
     fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> TestOutcome {
         if cfg.args.prompt {
             loop {
-                let status = self.run_cargo(cfg, dl_spec);
+                let status = self.run_test(cfg, dl_spec);
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
@@ -461,7 +464,7 @@ impl Toolchain {
                 }
             }
         } else {
-            if self.run_cargo(cfg, dl_spec).success() {
+            if self.run_test(cfg, dl_spec).success() {
                 TestOutcome::Baseline
             } else {
                 TestOutcome::Regressed
@@ -469,34 +472,42 @@ impl Toolchain {
         }
     }
 
-    fn run_cargo(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
-        // do things with this toolchain
-        let mut cargo = Command::new("cargo");
-        cargo.arg(&format!("+{}", self.rustup_name()));
-        cargo.current_dir(&cfg.args.test_dir);
+    fn run_test(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
         let _ = fs::remove_dir_all(
             cfg.args
                 .test_dir
                 .join(&format!("target-{}", self.rustup_name())),
         );
-        cargo.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
-
-        if cfg.args.cargo_args.is_empty() {
-            cargo.arg("build");
-        } else {
-            cargo.args(&cfg.args.cargo_args);
-        }
+        let mut cmd = match cfg.args.script {
+            Some(ref script) => {
+                let mut cmd = Command::new(script);
+                cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
+                cmd
+            }
+            None => {
+                let mut cmd = Command::new("cargo");
+                cmd.arg(&format!("+{}", self.rustup_name()));
+                if cfg.args.cargo_args.is_empty() {
+                    cmd.arg("build");
+                } else {
+                    cmd.args(&cfg.args.cargo_args);
+                }
+                cmd
+            }
+        };
+        cmd.current_dir(&cfg.args.test_dir);
+        cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
         if cfg.args.emit_cargo_output() || cfg.args.prompt {
-            cargo.stdout(Stdio::inherit());
-            cargo.stderr(Stdio::inherit());
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
         } else {
-            cargo.stdout(Stdio::null());
-            cargo.stderr(Stdio::null());
+            cmd.stdout(Stdio::null());
+            cmd.stderr(Stdio::null());
         }
-        let status = match cargo.status() {
+        let status = match cmd.status() {
             Ok(status) => status,
             Err(err) => {
-                panic!("failed to run {:?}: {:?}", cargo, err);
+                panic!("failed to run {:?}: {:?}", cmd, err);
             }
         };
         if !cfg.args.preserve {
