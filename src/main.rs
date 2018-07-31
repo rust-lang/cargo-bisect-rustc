@@ -73,6 +73,17 @@ fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
 }
 
 #[derive(Debug, StructOpt)]
+#[structopt(after_help = "EXAMPLES:
+    Run a fully automatic nightly bisect doing `cargo check`:
+    ```
+    cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
+    ```
+
+    Run a PR-based bisect with manual prompts after each run doing `cargo build`:
+    ```
+    cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
+      --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
+    ```")]
 struct Opts {
     #[structopt(
         short = "a", long = "alt", help = "Download the alt build instead of normal build"
