@@ -99,6 +99,9 @@ struct Opts {
     #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
+    #[structopt(long = "preserve-target", help = "Preserve the target directory used for builds")]
+    preserve_target: bool,
+
     #[structopt(
         long = "with-cargo", help = "Download cargo, by default the installed cargo is used"
     )]
@@ -459,9 +462,9 @@ impl Toolchain {
     }
 
     fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> TestOutcome {
-        if cfg.args.prompt {
+        let outcome = if cfg.args.prompt {
             loop {
-                let status = self.run_test(cfg, dl_spec);
+                let status = self.run_test(cfg);
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
@@ -479,20 +482,28 @@ impl Toolchain {
                 }
             }
         } else {
-            if self.run_test(cfg, dl_spec).success() {
+            if self.run_test(cfg).success() {
                 TestOutcome::Baseline
             } else {
                 TestOutcome::Regressed
             }
+        };
+
+        if !cfg.args.preserve {
+            let _ = self.remove(dl_spec);
         }
+
+        outcome
     }
 
-    fn run_test(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
-        let _ = fs::remove_dir_all(
-            cfg.args
-                .test_dir
-                .join(&format!("target-{}", self.rustup_name())),
-        );
+    fn run_test(&self, cfg: &Config) -> process::ExitStatus {
+        if !cfg.args.preserve_target {
+            let _ = fs::remove_dir_all(
+                cfg.args
+                    .test_dir
+                    .join(&format!("target-{}", self.rustup_name())),
+            );
+        }
         let mut cmd = match cfg.args.script {
             Some(ref script) => {
                 let mut cmd = Command::new(script);
@@ -525,9 +536,6 @@ impl Toolchain {
                 panic!("failed to run {:?}: {:?}", cmd, err);
             }
         };
-        if !cfg.args.preserve {
-            let _ = self.remove(dl_spec);
-        }
 
         status
     }
