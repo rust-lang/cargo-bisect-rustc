@@ -2,6 +2,8 @@
 
 This tool bisects either Rust nightlies or CI artifacts.
 
+[**Tutorial**](TUTORIAL.md)
+
 ## License
 
 Licensed under either of
