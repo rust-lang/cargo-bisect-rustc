@@ -110,6 +110,7 @@ struct Opts {
     #[structopt(
         long = "test-dir",
         help = "Directory to test; this is where you usually run `cargo build`",
+        default_value = ".",
         parse(from_os_str)
     )]
     test_dir: PathBuf,
