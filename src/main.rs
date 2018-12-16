@@ -40,7 +40,7 @@ use dialoguer::Select;
 use failure::Error;
 use flate2::read::GzDecoder;
 use pbr::{ProgressBar, Units};
-use reqwest::header::ContentLength;
+use reqwest::header::CONTENT_LENGTH;
 use reqwest::{Client, Response};
 use structopt::StructOpt;
 use tar::Archive;
@@ -356,15 +356,16 @@ fn download_progress(
 
     let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
 
-    if response.status() == reqwest::StatusCode::NotFound {
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(DownloadError::NotFound(url.to_string()));
     }
     let response = response.error_for_status().map_err(DownloadError::Reqwest)?;
 
     let length = response
         .headers()
-        .get::<ContentLength>()
-        .map(|h| h.0)
+        .get(CONTENT_LENGTH)
+        .and_then(|c| c.to_str().ok())
+        .and_then(|c| c.parse().ok())
         .unwrap_or(0);
     let mut bar = ProgressBar::new(length);
     bar.set_units(Units::Bytes);
