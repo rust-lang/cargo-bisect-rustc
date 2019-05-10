@@ -67,7 +67,7 @@ use least_satisfying::{least_satisfying, Satisfies};
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
     eprintln!("fetching commits from {} to {}", start, end);
     let commits = git::get_commits_between(start, end)?;
-    assert_eq!(commits.first().expect("at least one commit").sha, start);
+    assert_eq!(commits.first().expect("at least one commit").sha, git::expand_commit(start)?);
 
     Ok(commits)
 }
