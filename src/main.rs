@@ -108,6 +108,11 @@ struct Opts {
     with_cargo: bool,
 
     #[structopt(
+        long = "with-src", help = "Download rust-src, by default this is not downloaded"
+    )]
+    with_src: bool,
+
+    #[structopt(
         long = "test-dir",
         help = "Directory to test; this is where you usually run `cargo build`",
         default_value = ".",
@@ -298,6 +303,7 @@ struct DownloadParams {
     tmp_dir: PathBuf,
     install_dir: PathBuf,
     install_cargo: bool,
+    install_src: bool,
     force_install: bool,
 }
 
@@ -314,6 +320,7 @@ impl DownloadParams {
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
+            install_src: cfg.args.with_src,
             force_install: cfg.args.force_install,
         }
     }
@@ -324,6 +331,7 @@ impl DownloadParams {
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
+            install_src: cfg.args.with_src,
             force_install: cfg.args.force_install,
         }
     }
@@ -609,6 +617,17 @@ impl Toolchain {
                 &format!("cargo for {}", self.host),
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join("cargo")),
+                tmpdir.path(),
+            ).map_err(InstallError::Download)?;
+        }
+
+        if dl_params.install_src {
+            let filename = "rust-src-nightly";
+            download_tarball(
+                &client,
+                "rust-src",
+                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
+                Some(&PathBuf::from(&filename).join("rust-src")),
                 tmpdir.path(),
             ).map_err(InstallError::Download)?;
         }
