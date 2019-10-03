@@ -12,6 +12,7 @@ version = "0.1.0"
 
 [dependencies]
 dialoguer = "0.3.0"
+dirs = "2.0"
 env_logger = "0.6.0"
 failure = "0.1"
 flate2 = "1.0.1"

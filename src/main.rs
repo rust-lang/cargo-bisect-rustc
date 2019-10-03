@@ -7,6 +7,7 @@
 
 extern crate chrono;
 extern crate dialoguer;
+extern crate dirs;
 extern crate env_logger;
 #[macro_use]
 extern crate failure;
@@ -663,7 +664,7 @@ impl Config {
         let mut toolchains_path = match env::var_os("RUSTUP_HOME") {
             Some(h) => PathBuf::from(h),
             None => {
-                let mut home = env::home_dir().ok_or_else(|| format_err!("Could not find home."))?;
+                let mut home = dirs::home_dir().ok_or_else(|| format_err!("Could not find home."))?;
                 home.push(".rustup");
                 home
             }
