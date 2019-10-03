@@ -18,7 +18,6 @@ extern crate pbr;
 #[cfg(test)]
 extern crate quickcheck;
 extern crate reqwest;
-#[macro_use]
 extern crate structopt;
 extern crate tar;
 extern crate tee;
