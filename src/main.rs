@@ -869,6 +869,66 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     Ok(())
 }
 
+struct NightlyFinderIter {
+    start_date: Date<Utc>,
+    current_date: Date<Utc>,
+}
+
+impl NightlyFinderIter {
+    fn new(start_date: Date<Utc>) -> Self {
+        Self {
+            start_date,
+            current_date: start_date,
+        }
+    }
+}
+
+impl Iterator for NightlyFinderIter {
+    type Item = Date<Utc>;
+
+    fn next(&mut self) -> Option<Date<Utc>> {
+        let current_distance = self.start_date - self.current_date;
+
+        let jump_length =
+            if current_distance.num_days() < 7 {
+                // first week jump by two days
+                2
+            } else if current_distance.num_days() < 49 {
+                // from 2nd to 7th week jump weekly
+                7
+            } else {
+                // from 7th week jump by two weeks
+                14
+            };
+
+        self.current_date = self.current_date - chrono::Duration::days(jump_length);
+        Some(self.current_date)
+    }
+}
+
+#[test]
+fn test_nightly_finder_iterator() {
+    let start_date = chrono::Date::from_utc(
+        chrono::naive::NaiveDate::from_ymd(2019, 01, 01),
+        chrono::Utc,
+    );
+
+    let mut iter = NightlyFinderIter::new(start_date);
+
+    assert_eq!(start_date - chrono::Duration::days(2), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(4), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(6), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(8), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(15), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(22), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(29), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(36), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(43), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(50), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(64), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(78), iter.next().unwrap());
+}
+
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
         bail!("cannot bisect nightlies with --alt: not supported");
@@ -883,7 +943,6 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         (today, false)
     };
 
-    let mut jump_length = 1;
     // before this date we didn't have -std packages
     let end_at = chrono::Date::from_utc(
         chrono::naive::NaiveDate::from_ymd(2015, 10, 20),
@@ -904,6 +963,8 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
             today
         }
     };
+
+    let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
     while nightly_date > end_at {
         let mut t = Toolchain {
@@ -930,10 +991,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 } else {
                     last_failure = nightly_date;
                 }
-                nightly_date = nightly_date - chrono::Duration::days(jump_length);
-                if jump_length < 30 {
-                    jump_length *= 2;
-                }
+
+                nightly_date = nightly_iter.next().unwrap();
+
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
