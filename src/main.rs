@@ -512,7 +512,7 @@ impl Toolchain {
         Ok(())
     }
 
-    fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> TestOutcome {
+    fn test(&self, cfg: &Config) -> TestOutcome {
         let outcome = if cfg.args.prompt {
             loop {
                 let status = self.run_test(cfg);
@@ -539,10 +539,6 @@ impl Toolchain {
                 TestOutcome::Regressed
             }
         };
-
-        if !cfg.args.preserve {
-            let _ = self.remove(dl_spec);
-        }
 
         outcome
     }
@@ -840,7 +836,7 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         let t = &toolchains[found];
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
@@ -982,7 +978,12 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         }
         match t.install(client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
+
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
+
                 if let TestOutcome::Baseline = outcome {
                     first_success = Some(nightly_date);
                     break;
@@ -993,10 +994,6 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 }
 
                 nightly_date = nightly_iter.next().unwrap();
-
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
             }
             Err(InstallError::NotFound { .. }) => {
                 // go back just one day, presumably missing nightly
@@ -1030,7 +1027,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let found = least_satisfying(&toolchains, |t| {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {
                     TestOutcome::Baseline => Satisfies::No,
@@ -1139,7 +1136,7 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
                 eprintln!("testing {}", t);
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {
                     TestOutcome::Regressed => Satisfies::Yes,
