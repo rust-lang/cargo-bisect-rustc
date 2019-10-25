@@ -13,9 +13,9 @@ const RUST_SRC_REPO: Option<&str> = option_env!("RUST_SRC_REPO");
 use std::path::Path;
 
 use chrono::{DateTime, TimeZone, Utc};
-use git2::{Commit as Git2Commit, Repository};
-use git2::build::RepoBuilder;
 use failure::Error;
+use git2::build::RepoBuilder;
+use git2::{Commit as Git2Commit, Repository};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {

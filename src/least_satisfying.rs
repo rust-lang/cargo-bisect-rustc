@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use std::fmt;
 use std::collections::BTreeMap;
+use std::fmt;
 
 pub fn least_satisfying<T, P>(slice: &[T], mut predicate: P) -> usize
 where
@@ -85,8 +85,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{least_satisfying, Satisfies};
     use super::Satisfies::*;
+    use super::{least_satisfying, Satisfies};
     use quickcheck::{QuickCheck, TestResult};
 
     fn prop(xs: Vec<Option<bool>>) -> TestResult {

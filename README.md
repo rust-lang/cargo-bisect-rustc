@@ -4,7 +4,11 @@ This tool bisects either Rust nightlies or CI artifacts.
 
 ## Setup
 
-Optionally, set the `RUST_SRC_REPO` environment variable to point at your local copy of https://github.com/rust-lang/rust. If the variable is not defined, `cargo-bisect-rustc` will clone it for you which takes a while.
+Optionally, set the `RUST_SRC_REPO` environment variable to point at your local copy of 
+https://github.com/rust-lang/rust. If the variable is not defined, `cargo-bisect-rustc` will clone 
+it for you which takes a while.
+
+[**Tutorial**](TUTORIAL.md)
 
 ## License
 

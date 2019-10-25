@@ -7,6 +7,7 @@
 
 extern crate chrono;
 extern crate dialoguer;
+extern crate dirs;
 extern crate env_logger;
 #[macro_use]
 extern crate failure;
@@ -18,7 +19,6 @@ extern crate pbr;
 #[cfg(test)]
 extern crate quickcheck;
 extern crate reqwest;
-#[macro_use]
 extern crate structopt;
 extern crate tar;
 extern crate tee;
@@ -26,33 +26,33 @@ extern crate tempdir;
 extern crate toml;
 extern crate xz2;
 
+use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
-use std::env;
-use std::process::{self, Command, Stdio};
-use std::path::{Path, PathBuf};
 use std::io::{self, Read};
-use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command, Stdio};
 use std::str::FromStr;
 
-use dialoguer::Select;
-use tempdir::TempDir;
-use failure::Error;
-use structopt::StructOpt;
-use reqwest::{Client, Response};
-use pbr::{ProgressBar, Units};
-use tee::TeeReader;
-use tar::Archive;
-use toml::Value;
-use reqwest::header::ContentLength;
-use xz2::read::XzDecoder;
-use flate2::read::GzDecoder;
 use chrono::{Date, Duration, Utc};
+use dialoguer::Select;
+use failure::Error;
+use flate2::read::GzDecoder;
+use pbr::{ProgressBar, Units};
+use reqwest::header::CONTENT_LENGTH;
+use reqwest::{Client, Response};
+use structopt::StructOpt;
+use tar::Archive;
+use tee::TeeReader;
+use tempdir::TempDir;
+use toml::Value;
+use xz2::read::XzDecoder;
 
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
 ///
-/// Due to our deletion policy which expires builds after 90 days, the build
+/// Due to our deletion policy which expires builds after 167 days, the build
 /// artifacts of this commit itself is no longer available, so this may not be entirely useful;
 /// however, it does limit the amount of commits somewhat.
 const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
@@ -67,15 +67,27 @@ use least_satisfying::{least_satisfying, Satisfies};
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
     eprintln!("fetching commits from {} to {}", start, end);
     let commits = git::get_commits_between(start, end)?;
-    assert_eq!(commits.first().expect("at least one commit").sha, start);
+    assert_eq!(commits.first().expect("at least one commit").sha, git::expand_commit(start)?);
 
     Ok(commits)
 }
 
 #[derive(Debug, StructOpt)]
+#[structopt(after_help = "EXAMPLES:
+    Run a fully automatic nightly bisect doing `cargo check`:
+    ```
+    cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
+    ```
+
+    Run a PR-based bisect with manual prompts after each run doing `cargo build`:
+    ```
+    cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
+      --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
+    ```")]
 struct Opts {
-    #[structopt(short = "a", long = "alt",
-                help = "Download the alt build instead of normal build")]
+    #[structopt(
+        short = "a", long = "alt", help = "Download the alt build instead of normal build"
+    )]
     alt: bool,
 
     #[structopt(long = "host", help = "Host triple for the compiler", default_value = "unknown")]
@@ -87,37 +99,58 @@ struct Opts {
     #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[structopt(long = "with-cargo",
-                help = "Download cargo, by default the installed cargo is used")]
+    #[structopt(long = "preserve-target", help = "Preserve the target directory used for builds")]
+    preserve_target: bool,
+
+    #[structopt(
+        long = "with-cargo", help = "Download cargo, by default the installed cargo is used"
+    )]
     with_cargo: bool,
 
-    #[structopt(long = "test-dir",
-                help = "Directory to test; this is where you usually run `cargo build`",
-                parse(from_os_str))]
+    #[structopt(
+        long = "with-src", help = "Download rust-src, by default this is not downloaded"
+    )]
+    with_src: bool,
+
+    #[structopt(
+        long = "test-dir",
+        help = "Directory to test; this is where you usually run `cargo build`",
+        default_value = ".",
+        parse(from_os_str)
+    )]
     test_dir: PathBuf,
 
-    #[structopt(default_value = "false", long = "prompt",
-                help = "Display a prompt in between runs to allow for manually \
-                        inspecting output and retrying.")]
+    #[structopt(
+        long = "prompt",
+        help = "Display a prompt in between runs to allow for manually \
+                inspecting output and retrying."
+    )]
     prompt: bool,
 
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
-    #[structopt(help = "Arguments to pass to cargo when running",
-                raw(multiple = "true", last = "true"), parse(from_os_str))]
+    #[structopt(
+        help = "Arguments to pass to cargo when running",
+        raw(multiple = "true", last = "true"),
+        parse(from_os_str)
+    )]
     cargo_args: Vec<OsString>,
 
-    #[structopt(long = "start",
-                help = "the left-bound for the search; this point should *not* have the regression")]
+    #[structopt(
+        long = "start",
+        help = "the left-bound for the search; this point should *not* have the regression"
+    )]
     start: Option<Bound>,
 
-    #[structopt(long = "end",
-                help = "the right-bound for the search; this point should have the regression")]
+    #[structopt(
+        long = "end", help = "the right-bound for the search; this point should have the regression"
+    )]
     end: Option<Bound>,
 
-    #[structopt(long = "by-commit",
-                help = "without specifying bounds, bisect via commit artifacts")]
+    #[structopt(
+        long = "by-commit", help = "without specifying bounds, bisect via commit artifacts"
+    )]
     by_commit: bool,
 
     #[structopt(long = "install", help = "install the given artifact")]
@@ -125,6 +158,13 @@ struct Opts {
 
     #[structopt(long = "force-install", help = "force installation over existing artifacts")]
     force_install: bool,
+
+    #[structopt(
+        long = "script",
+        help = "script to run instead of cargo to test for regression",
+        parse(from_os_str)
+    )]
+    script: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
@@ -263,6 +303,7 @@ struct DownloadParams {
     tmp_dir: PathBuf,
     install_dir: PathBuf,
     install_cargo: bool,
+    install_src: bool,
     force_install: bool,
 }
 
@@ -279,6 +320,7 @@ impl DownloadParams {
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
+            install_src: cfg.args.with_src,
             force_install: cfg.args.force_install,
         }
     }
@@ -289,6 +331,7 @@ impl DownloadParams {
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
+            install_src: cfg.args.with_src,
             force_install: cfg.args.force_install,
         }
     }
@@ -321,15 +364,16 @@ fn download_progress(
 
     let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
 
-    if response.status() == reqwest::StatusCode::NotFound {
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(DownloadError::NotFound(url.to_string()));
     }
     let response = response.error_for_status().map_err(DownloadError::Reqwest)?;
 
     let length = response
         .headers()
-        .get::<ContentLength>()
-        .map(|h| h.0)
+        .get(CONTENT_LENGTH)
+        .and_then(|c| c.to_str().ok())
+        .and_then(|c| c.parse().ok())
         .unwrap_or(0);
     let mut bar = ProgressBar::new(length);
     bar.set_units(Units::Bytes);
@@ -428,61 +472,80 @@ impl Toolchain {
     }
 
     fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> TestOutcome {
-        if cfg.args.prompt {
+        let outcome = if cfg.args.prompt {
             loop {
-                let status = self.run_cargo(cfg, dl_spec);
+                let status = self.run_test(cfg);
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
 
                 match Select::new()
-                    .items(&["retry", "mark baseline", "mark regressed"])
+                    .items(&["mark regressed", "mark baseline", "retry"])
                     .default(0)
                     .interact()
                     .unwrap()
                 {
-                    0 => continue,
+                    0 => break TestOutcome::Regressed,
                     1 => break TestOutcome::Baseline,
-                    2 => break TestOutcome::Regressed,
+                    2 => continue,
                     _ => unreachable!(),
                 }
             }
         } else {
-            if self.run_cargo(cfg, dl_spec).success() {
+            if self.run_test(cfg).success() {
                 TestOutcome::Baseline
             } else {
                 TestOutcome::Regressed
             }
-        }
-    }
-
-    fn run_cargo(&self, cfg: &Config, dl_spec: &DownloadParams) -> process::ExitStatus {
-        // do things with this toolchain
-        let mut cargo = Command::new("cargo");
-        cargo.arg(&format!("+{}", self.rustup_name()));
-        cargo.current_dir(&cfg.args.test_dir);
-        cargo.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
-        if cfg.args.cargo_args.is_empty() {
-            cargo.arg("build");
-        } else {
-            cargo.args(&cfg.args.cargo_args);
-        }
-        if cfg.args.emit_cargo_output() || cfg.args.prompt {
-            cargo.stdout(Stdio::inherit());
-            cargo.stderr(Stdio::inherit());
-        } else {
-            cargo.stdout(Stdio::null());
-            cargo.stderr(Stdio::null());
-        }
-        let status = match cargo.status() {
-            Ok(status) => status,
-            Err(err) => {
-                panic!("failed to run {:?}: {:?}", cargo, err);
-            }
         };
+
         if !cfg.args.preserve {
             let _ = self.remove(dl_spec);
         }
+
+        outcome
+    }
+
+    fn run_test(&self, cfg: &Config) -> process::ExitStatus {
+        if !cfg.args.preserve_target {
+            let _ = fs::remove_dir_all(
+                cfg.args
+                    .test_dir
+                    .join(&format!("target-{}", self.rustup_name())),
+            );
+        }
+        let mut cmd = match cfg.args.script {
+            Some(ref script) => {
+                let mut cmd = Command::new(script);
+                cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
+                cmd
+            }
+            None => {
+                let mut cmd = Command::new("cargo");
+                cmd.arg(&format!("+{}", self.rustup_name()));
+                if cfg.args.cargo_args.is_empty() {
+                    cmd.arg("build");
+                } else {
+                    cmd.args(&cfg.args.cargo_args);
+                }
+                cmd
+            }
+        };
+        cmd.current_dir(&cfg.args.test_dir);
+        cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
+        if cfg.args.emit_cargo_output() || cfg.args.prompt {
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+        } else {
+            cmd.stdout(Stdio::null());
+            cmd.stderr(Stdio::null());
+        }
+        let status = match cmd.status() {
+            Ok(status) => status,
+            Err(err) => {
+                panic!("failed to run {:?}: {:?}", cmd, err);
+            }
+        };
 
         status
     }
@@ -558,6 +621,17 @@ impl Toolchain {
             ).map_err(InstallError::Download)?;
         }
 
+        if dl_params.install_src {
+            let filename = "rust-src-nightly";
+            download_tarball(
+                &client,
+                "rust-src",
+                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
+                Some(&PathBuf::from(&filename).join("rust-src")),
+                tmpdir.path(),
+            ).map_err(InstallError::Download)?;
+        }
+
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
 
         Ok(())
@@ -590,7 +664,7 @@ impl Config {
         let mut toolchains_path = match env::var_os("RUSTUP_HOME") {
             Some(h) => PathBuf::from(h),
             None => {
-                let mut home = env::home_dir().ok_or_else(|| format_err!("Could not find home."))?;
+                let mut home = dirs::home_dir().ok_or_else(|| format_err!("Could not find home."))?;
                 home.push(".rustup");
                 home
             }
@@ -796,7 +870,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                     last_failure = nightly_date;
                 }
                 nightly_date = nightly_date - chrono::Duration::days(jump_length);
-                jump_length *= 2;
+                if jump_length < 30 {
+                    jump_length *= 2;
+                }
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
@@ -901,24 +977,14 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
 
     let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
-    commits.retain(|c| now.signed_duration_since(c.date).num_days() < 90);
+    commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
 
     if commits.is_empty() {
         bail!(
-            "no commits between {} and {} within last 90 days",
+            "no commits between {} and {} within last 167 days",
             start,
             end
         );
-    }
-
-    if let Some(ref c) = commits.first() {
-        if !c.sha.starts_with(start) {
-            bail!(
-                "expected to start with {}, but started with {}",
-                start,
-                c.sha
-            );
-        }
     }
 
     if let Some(ref c) = commits.last() {
