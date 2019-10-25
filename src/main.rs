@@ -18,7 +18,9 @@ extern crate log;
 extern crate pbr;
 #[cfg(test)]
 extern crate quickcheck;
+extern crate regex;
 extern crate reqwest;
+extern crate rustc_version;
 extern crate structopt;
 extern crate tar;
 extern crate tee;
@@ -35,13 +37,15 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::str::FromStr;
 
-use chrono::{Date, Duration, Utc};
+use chrono::{Date, Duration, naive, Utc};
 use dialoguer::Select;
 use failure::Error;
 use flate2::read::GzDecoder;
 use pbr::{ProgressBar, Units};
+use regex::Regex;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::{Client, Response};
+use rustc_version::Channel;
 use structopt::StructOpt;
 use tar::Archive;
 use tee::TeeReader;
@@ -464,14 +468,51 @@ enum TestOutcome {
 }
 
 impl Toolchain {
+    /// This returns the date of the default toolchain, if it is a nightly toolchain.
+    /// Returns `None` if the installed toolchain is not a nightly toolchain.
+    fn default_nightly() -> Option<Date<Utc>> {
+        let version_meta = rustc_version::version_meta().unwrap();
+
+        if let Channel::Nightly = version_meta.channel {
+            if let Some(str_date) = version_meta.commit_date {
+                let regex = Regex::new(r"(?m)^(\d{4})-(\d{2})-(\d{2})$").unwrap();
+                if let Some(cap) = regex.captures(&str_date) {
+                    let year = cap.get(1)?.as_str().parse::<i32>().ok()?;
+                    let month = cap.get(2)?.as_str().parse::<u32>().ok()?;
+                    let day = cap.get(3)?.as_str().parse::<u32>().ok()?;
+
+                    return Some(Date::from_utc(
+                        naive::NaiveDate::from_ymd(year, month, day),
+                        Utc,
+                    ));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn is_current_nightly(&self) -> bool {
+        if let ToolchainSpec::Nightly { date } = self.spec {
+            if let Some(default_date) = Self::default_nightly() {
+                return default_date == date;
+            }
+        }
+
+        false
+    }
+
     fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
-        eprintln!("uninstalling {}", self);
-        let dir = dl_params.install_dir.join(self.rustup_name());
-        fs::remove_dir_all(&dir)?;
+        if !self.is_current_nightly() {
+            eprintln!("uninstalling {}", self);
+            let dir = dl_params.install_dir.join(self.rustup_name());
+            fs::remove_dir_all(&dir)?;
+        }
+
         Ok(())
     }
 
-    fn test(&self, cfg: &Config, dl_spec: &DownloadParams) -> TestOutcome {
+    fn test(&self, cfg: &Config) -> TestOutcome {
         let outcome = if cfg.args.prompt {
             loop {
                 let status = self.run_test(cfg);
@@ -498,10 +539,6 @@ impl Toolchain {
                 TestOutcome::Regressed
             }
         };
-
-        if !cfg.args.preserve {
-            let _ = self.remove(dl_spec);
-        }
 
         outcome
     }
@@ -551,6 +588,11 @@ impl Toolchain {
     }
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
+        if self.is_current_nightly() {
+            // pre existing installation
+            return Ok(());
+        }
+
         debug!("installing {}", self);
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
@@ -794,7 +836,7 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         let t = &toolchains[found];
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
@@ -823,6 +865,66 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     Ok(())
 }
 
+struct NightlyFinderIter {
+    start_date: Date<Utc>,
+    current_date: Date<Utc>,
+}
+
+impl NightlyFinderIter {
+    fn new(start_date: Date<Utc>) -> Self {
+        Self {
+            start_date,
+            current_date: start_date,
+        }
+    }
+}
+
+impl Iterator for NightlyFinderIter {
+    type Item = Date<Utc>;
+
+    fn next(&mut self) -> Option<Date<Utc>> {
+        let current_distance = self.start_date - self.current_date;
+
+        let jump_length =
+            if current_distance.num_days() < 7 {
+                // first week jump by two days
+                2
+            } else if current_distance.num_days() < 49 {
+                // from 2nd to 7th week jump weekly
+                7
+            } else {
+                // from 7th week jump by two weeks
+                14
+            };
+
+        self.current_date = self.current_date - chrono::Duration::days(jump_length);
+        Some(self.current_date)
+    }
+}
+
+#[test]
+fn test_nightly_finder_iterator() {
+    let start_date = chrono::Date::from_utc(
+        chrono::naive::NaiveDate::from_ymd(2019, 01, 01),
+        chrono::Utc,
+    );
+
+    let mut iter = NightlyFinderIter::new(start_date);
+
+    assert_eq!(start_date - chrono::Duration::days(2), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(4), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(6), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(8), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(15), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(22), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(29), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(36), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(43), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(50), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(64), iter.next().unwrap());
+    assert_eq!(start_date - chrono::Duration::days(78), iter.next().unwrap());
+}
+
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
         bail!("cannot bisect nightlies with --alt: not supported");
@@ -837,7 +939,6 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         (today, false)
     };
 
-    let mut jump_length = 1;
     // before this date we didn't have -std packages
     let end_at = chrono::Date::from_utc(
         chrono::naive::NaiveDate::from_ymd(2015, 10, 20),
@@ -847,8 +948,20 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let mut last_failure = if let Some(Bound::Date(date)) = cfg.args.end {
         date
     } else {
-        today
+        if let Some(date) = Toolchain::default_nightly() {
+            // start date must be prior to end date
+            if !has_start {
+                nightly_date = date;
+            }
+
+            date
+        } else {
+            today
+        }
     };
+
+    let mut nightly_iter = NightlyFinderIter::new(nightly_date);
+
     while nightly_date > end_at {
         let mut t = Toolchain {
             spec: ToolchainSpec::Nightly { date: nightly_date },
@@ -857,10 +970,20 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         };
         t.std_targets.sort();
         t.std_targets.dedup();
-        eprintln!("checking {}", t);
+        if t.is_current_nightly() {
+            eprintln!("checking {} from the currently installed default nightly \
+                       toolchain as the last failure", t);
+        } else {
+            eprintln!("checking {}", t);
+        }
         match t.install(client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
+
+                if !cfg.args.preserve {
+                    let _ = t.remove(&dl_spec);
+                }
+
                 if let TestOutcome::Baseline = outcome {
                     first_success = Some(nightly_date);
                     break;
@@ -869,13 +992,8 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 } else {
                     last_failure = nightly_date;
                 }
-                nightly_date = nightly_date - chrono::Duration::days(jump_length);
-                if jump_length < 30 {
-                    jump_length *= 2;
-                }
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
+
+                nightly_date = nightly_iter.next().unwrap();
             }
             Err(InstallError::NotFound { .. }) => {
                 // go back just one day, presumably missing nightly
@@ -909,7 +1027,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let found = least_satisfying(&toolchains, |t| {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {
                     TestOutcome::Baseline => Satisfies::No,
@@ -1018,7 +1136,7 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
                 eprintln!("testing {}", t);
-                let outcome = t.test(&cfg, &dl_spec);
+                let outcome = t.test(&cfg);
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {
                     TestOutcome::Regressed => Satisfies::Yes,
