@@ -67,7 +67,46 @@ it fails. In just a few steps, we find that it stopped working on
 But wait, we can do better! As long as the regression wasn't too long ago, we
 can find the exact PR that caused the regression. Use git hashes from the
 rustc repo's log as the start/end parameters. They must be from bors on the
-master branch. Assuming you aren't reading this too far in the future, the
+master branch.
+
+To find a list of all such usable commit hashes, we can use `git log` in the
+`RUST_SRC_REPO` git clone. After regressing to a nightly, and padding a couple
+days before and after its date to allow for the CI build process time:
+
+```
+git log --since "JUL 28 2018" --until "JUL 30 2018" --author=bors --pretty=format:"%H %an %ad"
+```
+
+will show
+
+```
+e4378412ecfc2a4ff5dfd65fef53fa6be691f689 bors Mon Jul 30 10:19:38 2018 +0000
+5ed2b5120bd875a7eb9fd8545d86eb1de1e41bce bors Mon Jul 30 08:25:36 2018 +0000
+7bbcd005b30582d07f1a39dcf50f77b54e055828 bors Mon Jul 30 06:29:39 2018 +0000
+a3f519df09bf40d09c1a111599b8f115f11fbb49 bors Mon Jul 30 04:34:19 2018 +0000
+b12235db096ab24a31e6e894757abfe8b018d44a bors Mon Jul 30 01:08:13 2018 +0000
+866a713258915e6cbb212d135f751a6a8c9e1c0a bors Sun Jul 29 21:37:47 2018 +0000
+70cac59031d5c33962a1f53cdca9359c0dcd1f9f bors Sun Jul 29 19:37:28 2018 +0000
+75af9df71b9eea84f281cf7de72c3e3cc2b02222 bors Sun Jul 29 13:23:01 2018 +0000
+2a9dc245c60ab4478b3bc4670aaad4b39e646366 bors Sun Jul 29 11:27:48 2018 +0000
+023fd7e74a9eb5bafcb75fcbe69b7110e9de4492 bors Sun Jul 29 09:33:37 2018 +0000
+a5c2d0fffaaf0b764c01bc4066e51ffd475ceae9 bors Sun Jul 29 06:32:24 2018 +0000
+fb0653e40289eecf32f3fac1e84fc69b815ce5cb bors Sun Jul 29 03:20:54 2018 +0000
+6a2c97c38d297307dd8554853890f51144f62172 bors Sun Jul 29 01:14:39 2018 +0000
+6323d9a45bdf0ac2a9319a6a558537e0a7e6abd1 bors Sat Jul 28 23:10:10 2018 +0000
+dab71516f1f4f6a63e32dffeb2625a12e5113485 bors Sat Jul 28 20:44:17 2018 +0000
+4234adf0d4fa56e8a8b8d790fb4992d160ab2188 bors Sat Jul 28 18:41:40 2018 +0000
+d75458200516f06455d175adc001fd993d674050 bors Sat Jul 28 16:44:21 2018 +0000
+26e73dabeb7a15e0e38feb2cadca3c1f740a61d2 bors Sat Jul 28 14:26:16 2018 +0000
+5b465e309da475aaedcb742ef29094c82e970051 bors Sat Jul 28 11:37:41 2018 +0000
+```
+
+and we can, for example, pick the last commit on the day before the nightly,
+`6323d9a45bdf0ac2a9319a6a558537e0a7e6abd1`, as the start of the range, and the 
+last commit on the day of the nightly, `866a713258915e6cbb212d135f751a6a8c9e1c0a`,
+as the end of the range.
+
+Assuming you aren't reading this too far in the future, the
 following should work:
 
 ```
@@ -77,8 +116,14 @@ cargo-bisect-rustc --test-dir=foo \
 ```
 
 This tells us that the regression started with
-70cac59031d5c33962a1f53cdca9359c0dcd1f9f and you can look at the git log to
-find the PR.
+`70cac59031d5c33962a1f53cdca9359c0dcd1f9f` and you can look at the git log to
+find the PR. Here, #51361.
+
+```
+ git log -1 70cac59031d5c33962a1f53cdca9359c0dcd1f9f
+```
+
+shows the merge commit's description starts with "`Auto merge of #51361`".
 
 ## Testing interactively
 
