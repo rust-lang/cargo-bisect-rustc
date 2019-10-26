@@ -796,15 +796,41 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
 }
 
 fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
+    if cfg.is_commit {
+        let bisection_result = bisect_ci(&cfg, &client)?;
+        print_results(cfg, client, &bisection_result);
+    } else {
+        let bisection_result = bisect_nightlies(&cfg, &client)?;
+        print_results(cfg, client, &bisection_result);
+        let regression = &bisection_result.searched[bisection_result.found];
+
+        if let ToolchainSpec::Nightly { date } = regression.spec {
+            let previous_date = date - chrono::Duration::days(1);
+
+            if let Bound::Commit(regression_commit) = Bound::Date(date).as_commit()? {
+                if let Bound::Commit(working_commit) = Bound::Date(previous_date).as_commit()? {
+                    eprintln!(
+                        "looking for regression commit between {} and {}",
+                        date.format("%Y-%m-%d"),
+                        previous_date.format("%Y-%m-%d"),
+                    );
+
+                    let bisection_result = bisect_ci_between(cfg, client, &working_commit, &regression_commit)?;
+                    print_results(cfg, client, &bisection_result);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
     let BisectionResult {
         searched: toolchains,
         dl_spec,
         found,
-    } = if cfg.is_commit {
-        bisect_ci(&cfg, &client)?
-    } else {
-        bisect_nightlies(&cfg, &client)?
-    };
+    } = bisection_result;
 
     eprintln!(
         "searched toolchains {} through {}",
@@ -812,8 +838,8 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         toolchains.last().unwrap(),
     );
 
-    if toolchains[found] == *toolchains.last().unwrap() {
-        let t = &toolchains[found];
+    if toolchains[*found] == *toolchains.last().unwrap() {
+        let t = &toolchains[*found];
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
                 let outcome = t.test(&cfg);
@@ -835,14 +861,12 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
             Satisfies::Yes => {}
             Satisfies::No | Satisfies::Unknown => {
                 eprintln!("error: The regression was not found. Expanding the bounds may help.");
-                return Ok(());
+                return;
             }
         }
     }
 
-    eprintln!("regression in {}", toolchains[found]);
-
-    Ok(())
+    eprintln!("regression in {}", toolchains[*found]);
 }
 
 struct NightlyFinderIter {
@@ -1058,7 +1082,6 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 
 fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     eprintln!("bisecting ci builds");
-    let dl_spec = DownloadParams::for_ci(cfg);
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
         sha
     } else {
@@ -1073,6 +1096,11 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
 
     eprintln!("starting at {}, ending at {}", start, end);
 
+    bisect_ci_between(cfg, client, start, end)
+}
+
+fn bisect_ci_between(cfg: &Config, client: &Client, start: &str, end: &str) -> Result<BisectionResult, Error> {
+    let dl_spec = DownloadParams::for_ci(cfg);
     let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
     commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
