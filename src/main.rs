@@ -25,7 +25,6 @@ extern crate structopt;
 extern crate tar;
 extern crate tee;
 extern crate tempdir;
-extern crate toml;
 extern crate xz2;
 
 use std::env;
@@ -50,7 +49,6 @@ use structopt::StructOpt;
 use tar::Archive;
 use tee::TeeReader;
 use tempdir::TempDir;
-use toml::Value;
 use xz2::read::XzDecoder;
 
 /// The first commit which build artifacts are made available through the CI for
@@ -197,33 +195,15 @@ impl Bound {
             Bound::Commit(commit) => Ok(Bound::Commit(commit)),
             Bound::Date(date) => {
                 let date_str = date.format("%Y-%m-%d");
-                let url = format!("{}/{}/channel-rust-nightly.toml", NIGHTLY_SERVER, date_str);
+                let url = format!("{}/{}/channel-rust-nightly-git-commit-hash.txt", NIGHTLY_SERVER, date_str);
 
                 eprintln!("fetching {}", url);
                 let client = Client::new();
                 let name = format!("nightly manifest {}", date_str);
                 let (response, mut bar) = download_progress(&client, &name, &url)?;
                 let mut response = TeeReader::new(response, &mut bar);
-                let mut toml_buf = String::new();
-                response.read_to_string(&mut toml_buf)?;
-
-                let manifest = toml_buf.parse::<Value>().unwrap();
-
-                let commit = match manifest {
-                    Value::Table(t) => match t.get("pkg") {
-                        Some(&Value::Table(ref t)) => match t.get("rust") {
-                            Some(&Value::Table(ref t)) => match t.get("git_commit_hash") {
-                                Some(&Value::String(ref hash)) => hash.to_owned(),
-                                _ => bail!(
-                                    "not a rustup manifest (no valid git_commit_hash key under rust"
-                                ),
-                            },
-                            _ => bail!("not a rustup manifest (no rust key under pkg)"),
-                        },
-                        _ => bail!("not a rustup manifest (missing pkg key)"),
-                    },
-                    _ => bail!("not a rustup manifest (not a table at root)"),
-                };
+                let mut commit = String::new();
+                response.read_to_string(&mut commit)?;
 
                 eprintln!("converted {} to {}", date_str, commit);
 
