@@ -25,7 +25,6 @@ extern crate structopt;
 extern crate tar;
 extern crate tee;
 extern crate tempdir;
-extern crate toml;
 extern crate xz2;
 
 use std::env;
@@ -50,7 +49,6 @@ use structopt::StructOpt;
 use tar::Archive;
 use tee::TeeReader;
 use tempdir::TempDir;
-use toml::Value;
 use xz2::read::XzDecoder;
 
 /// The first commit which build artifacts are made available through the CI for
@@ -197,33 +195,15 @@ impl Bound {
             Bound::Commit(commit) => Ok(Bound::Commit(commit)),
             Bound::Date(date) => {
                 let date_str = date.format("%Y-%m-%d");
-                let url = format!("{}/{}/channel-rust-nightly.toml", NIGHTLY_SERVER, date_str);
+                let url = format!("{}/{}/channel-rust-nightly-git-commit-hash.txt", NIGHTLY_SERVER, date_str);
 
                 eprintln!("fetching {}", url);
                 let client = Client::new();
                 let name = format!("nightly manifest {}", date_str);
                 let (response, mut bar) = download_progress(&client, &name, &url)?;
                 let mut response = TeeReader::new(response, &mut bar);
-                let mut toml_buf = String::new();
-                response.read_to_string(&mut toml_buf)?;
-
-                let manifest = toml_buf.parse::<Value>().unwrap();
-
-                let commit = match manifest {
-                    Value::Table(t) => match t.get("pkg") {
-                        Some(&Value::Table(ref t)) => match t.get("rust") {
-                            Some(&Value::Table(ref t)) => match t.get("git_commit_hash") {
-                                Some(&Value::String(ref hash)) => hash.to_owned(),
-                                _ => bail!(
-                                    "not a rustup manifest (no valid git_commit_hash key under rust"
-                                ),
-                            },
-                            _ => bail!("not a rustup manifest (no rust key under pkg)"),
-                        },
-                        _ => bail!("not a rustup manifest (missing pkg key)"),
-                    },
-                    _ => bail!("not a rustup manifest (not a table at root)"),
-                };
+                let mut commit = String::new();
+                response.read_to_string(&mut commit)?;
 
                 eprintln!("converted {} to {}", date_str, commit);
 
@@ -816,15 +796,41 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
 }
 
 fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
+    if cfg.is_commit {
+        let bisection_result = bisect_ci(&cfg, &client)?;
+        print_results(cfg, client, &bisection_result);
+    } else {
+        let bisection_result = bisect_nightlies(&cfg, &client)?;
+        print_results(cfg, client, &bisection_result);
+        let regression = &bisection_result.searched[bisection_result.found];
+
+        if let ToolchainSpec::Nightly { date } = regression.spec {
+            let previous_date = date - chrono::Duration::days(1);
+
+            if let Bound::Commit(regression_commit) = Bound::Date(date).as_commit()? {
+                if let Bound::Commit(working_commit) = Bound::Date(previous_date).as_commit()? {
+                    eprintln!(
+                        "looking for regression commit between {} and {}",
+                        date.format("%Y-%m-%d"),
+                        previous_date.format("%Y-%m-%d"),
+                    );
+
+                    let bisection_result = bisect_ci_between(cfg, client, &working_commit, &regression_commit)?;
+                    print_results(cfg, client, &bisection_result);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
     let BisectionResult {
         searched: toolchains,
         dl_spec,
         found,
-    } = if cfg.is_commit {
-        bisect_ci(&cfg, &client)?
-    } else {
-        bisect_nightlies(&cfg, &client)?
-    };
+    } = bisection_result;
 
     eprintln!(
         "searched toolchains {} through {}",
@@ -832,8 +838,8 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         toolchains.last().unwrap(),
     );
 
-    if toolchains[found] == *toolchains.last().unwrap() {
-        let t = &toolchains[found];
+    if toolchains[*found] == *toolchains.last().unwrap() {
+        let t = &toolchains[*found];
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
                 let outcome = t.test(&cfg);
@@ -855,14 +861,12 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
             Satisfies::Yes => {}
             Satisfies::No | Satisfies::Unknown => {
                 eprintln!("error: The regression was not found. Expanding the bounds may help.");
-                return Ok(());
+                return;
             }
         }
     }
 
-    eprintln!("regression in {}", toolchains[found]);
-
-    Ok(())
+    eprintln!("regression in {}", toolchains[*found]);
 }
 
 struct NightlyFinderIter {
@@ -1078,7 +1082,6 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 
 fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     eprintln!("bisecting ci builds");
-    let dl_spec = DownloadParams::for_ci(cfg);
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
         sha
     } else {
@@ -1093,6 +1096,11 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
 
     eprintln!("starting at {}, ending at {}", start, end);
 
+    bisect_ci_between(cfg, client, start, end)
+}
+
+fn bisect_ci_between(cfg: &Config, client: &Client, start: &str, end: &str) -> Result<BisectionResult, Error> {
+    let dl_spec = DownloadParams::for_ci(cfg);
     let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
     commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
