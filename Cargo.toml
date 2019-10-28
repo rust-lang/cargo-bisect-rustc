@@ -7,7 +7,7 @@ keywords = ["rustup"]
 license = "MIT OR Apache-2.0"
 name = "cargo-bisect-rustc"
 readme = "README.md"
-repository = "https://github.com/rust-lang-nursery/cargo-bisect-rustc"
+repository = "https://github.com/rust-lang/cargo-bisect-rustc"
 version = "0.1.0"
 
 [dependencies]
