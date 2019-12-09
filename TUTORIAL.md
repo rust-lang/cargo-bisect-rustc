@@ -1,19 +1,51 @@
 # Bisecting Regressions
 
 The [`cargo-bisect-rustc`] tool makes it super easy to find exactly when
-behavior has changed in rustc. It automatically downloads rustc artifacts and
-tests them against a project you provide until it finds the regression. To
-install:
+behavior has regressed in rustc. It automatically downloads rustc
+artifacts and tests them against a project you provide until it finds
+the regression.
+
+To install the tool run:
 
 ```sh
-git clone https://github.com/rust-lang-nursery/cargo-bisect-rustc.git
-RUST_SRC_REPO=/path/to/rust cargo install --path=cargo-bisect-rustc
+cargo install cargo-bisect-rustc
+```
+
+or (to avoid cloning rustc)
+
+```
+RUST_SRC_REPO=/path/to/rust cargo install cargo-bisect-rustc
 ```
 
 The `RUST_SRC_REPO` should be a path to a git clone of the rust repo. If you
 don't specify it, it will look in the current directory for `rust.git` or
 check it out automatically if it's not there (only necessary if doing git hash
 bisections).
+
+First, if you have a nightly version of the compiler already installed
+as the default toolchain and you don't pass an end flag, the tool is
+going to assume that that's the version that has regressed and use it as
+the "bad" version. Otherwise would use that start point or just use the
+latest nightly.
+If you have provided a start flag it would use that as the "good"
+version, otherwise is going to search for a good one backwards.
+
+Once the tool has an start point (good version) and end point (bad
+version), is going to do the bisect to find the regressed nightly. Once
+it finds the regressed nightly is going to look between that nightly and
+the one of the day before for the specific commit that has the
+regression and report everything back to the user.
+
+So, there's a bunch of ways to run the tool, the easiest one is to
+allow the tool to do the job and just run `cargo bisect-rustc` on the
+project and let the tool figure things out.
+
+Note: you can also pass `RUST_SRC_REPO` env var, should be a path to a
+git clone of the rust repo. If you don't specify it, it will look in the
+current directory for `rust.git` or check it out automatically if it's
+not there (only necessary if doing git hash bisections).
+
+## Finding a regression
 
 Create a cargo project that demonstrates the regression. Let's use
 [issue #53157] as an example:
@@ -38,20 +70,16 @@ fn main() {
 }
 ```
 
-## Regressing to a nightly
+Then run `cargo bisect-rustc --end=2018-08-04`.
 
-Let's find the first nightly where this fails. First you need to determine a
-nightly release where the code works, and one where it doesn't. We can see
-from the issue that we know stable 1.28.0 was working, and that it no longer
-works as of nightly 2018-08-04. We're testing against nightlies, and stable
-1.28.0 branched off master 12 weeks prior to its release, and the regression
-could have been introduced to master during that time, so I'll just take a
-guess that nightly 2018-05-07 is OK. Don't worry if you guess wrong,
-`cargo-bisect-rustc` will tell you and you can just pick a larger date range.
-To find the exact nightly release where it stopped working:
+We need to provide the end point for this particular example because
+that's an old regression already fixed on the latests nightlies.
+We could also provide a start point if we know one, that's going to make
+the tool avoid searching for that so answer our request faster.
+For instance:
 
 ```
-cargo-bisect-rustc --test-dir=foo --start=2018-05-07 --end=2018-08-04
+cargo bisect-rustc --test-dir=foo --start=2018-05-07 --end=2018-08-04
 ```
 
 By default it will run `cargo build` in the project and check whether or not
@@ -62,11 +90,15 @@ it fails. In just a few steps, we find that it stopped working on
 > artifacts for future runs. They are stored in the normal location for your
 > toolchains in `RUSTUP_HOME`.
 
-## Regressing to a PR
+After that is going to automatically search for the commit that
+introduced the regression.
 
-But wait, we can do better! As long as the regression wasn't too long ago, we
-can find the exact PR that caused the regression. Use git hashes from the
-rustc repo's log as the start/end parameters. They must be from bors on the
+## Finding a regression between commits
+
+We can also just ask the tool to look between commits if that's what we
+want. As long as the regression wasn't too long ago, we can find the
+exact PR that caused the regression. Use git hashes from the rustc
+repo's log as the start/end parameters. They must be from bors on the
 master branch.
 
 To find a list of all such usable commit hashes, we can use `git log` in the
