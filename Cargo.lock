@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-bisect-rustc"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "dialoguer 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
