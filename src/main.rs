@@ -800,14 +800,14 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         let bisection_result = bisect_ci(&cfg, &client)?;
         print_results(cfg, client, &bisection_result);
     } else {
-        let bisection_result = bisect_nightlies(&cfg, &client)?;
-        print_results(cfg, client, &bisection_result);
-        let regression = &bisection_result.searched[bisection_result.found];
+        let nightly_bisection_result = bisect_nightlies(&cfg, &client)?;
+        print_results(cfg, client, &nightly_bisection_result);
+        let nightly_regression = &nightly_bisection_result.searched[nightly_bisection_result.found];
 
-        if let ToolchainSpec::Nightly { date } = regression.spec {
+        if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
             let previous_date = date - chrono::Duration::days(1);
 
-            if let Bound::Commit(regression_commit) = Bound::Date(date).as_commit()? {
+            if let Bound::Commit(bad_commit) = Bound::Date(date).as_commit()? {
                 if let Bound::Commit(working_commit) = Bound::Date(previous_date).as_commit()? {
                     eprintln!(
                         "looking for regression commit between {} and {}",
@@ -815,8 +815,9 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
                         previous_date.format("%Y-%m-%d"),
                     );
 
-                    let bisection_result = bisect_ci_between(cfg, client, &working_commit, &regression_commit)?;
-                    print_results(cfg, client, &bisection_result);
+                    let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
+                    print_results(cfg, client, &ci_bisection_result);
+                    print_final_report(&nightly_bisection_result, &ci_bisection_result);
                 }
             }
         }
@@ -867,6 +868,78 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
     }
 
     eprintln!("regression in {}", toolchains[*found]);
+}
+
+fn print_final_report(
+    nightly_bisection_result: &BisectionResult,
+    ci_bisection_result: &BisectionResult,
+) {
+    let BisectionResult {
+        searched: nightly_toolchains,
+        found: nightly_found,
+        ..
+    } = nightly_bisection_result;
+
+    let BisectionResult {
+        searched: ci_toolchains,
+        found: ci_found,
+        ..
+    } = ci_bisection_result;
+
+    eprintln!("");
+    eprintln!("");
+
+    eprintln!("==================================================================================");
+    eprintln!("= Please open an issue on Rust's github repository                               =");
+    eprintln!("= https://github.com/rust-lang/rust/issues/new                                   =");
+    eprintln!("= Below you will find a text that would serve as a starting point of your report =");
+    eprintln!("==================================================================================");
+
+    eprintln!("");
+
+    eprintln!("# Regression found in the compiler");
+    eprintln!("");
+
+    eprintln!(
+        "searched nightlies: from {} to {}",
+        nightly_toolchains.first().unwrap(),
+        nightly_toolchains.last().unwrap(),
+    );
+
+    eprintln!(
+        "regressed nightly: {}",
+        nightly_toolchains[*nightly_found],
+    );
+
+    eprintln!(
+        "searched commits: from https://github.com/rust-lang/rust/commit/{} to https://github.com/rust-lang/rust/commit/{1}",
+        ci_toolchains.first().unwrap(),
+        ci_toolchains.last().unwrap(),
+    );
+
+    eprintln!(
+        "regressed commit: https://github.com/rust-lang/rust/commit/{}",
+        ci_toolchains[*ci_found],
+    );
+
+    eprintln!("source code: URL OF A REPOSITORY THAT REPRODUCES THE ERROR");
+
+    eprintln!("");
+
+    eprintln!("## Instructions");
+    eprintln!("");
+    eprintln!("Please give the steps for how to build your repository (platform, system dependencies, etc.)");
+
+    eprintln!("## Error");
+    eprintln!("");
+    eprintln!("<details><summary>COLLAPSIBLE ERROR STACKTRACE</summary>");
+    eprintln!("<p>");
+    eprintln!("");
+    eprintln!("```bash");
+    eprintln!("Paste the error the compiler is giving");
+    eprintln!("```");
+    eprintln!("");
+    eprintln!("</p></details>");
 }
 
 struct NightlyFinderIter {
