@@ -1008,13 +1008,6 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     }
 
     let dl_spec = DownloadParams::for_nightly(&cfg);
-    let now = chrono::Utc::now();
-    let today = now.date();
-    let (mut nightly_date, has_start) = if let Some(Bound::Date(date)) = cfg.args.start {
-        (date, true)
-    } else {
-        (today, false)
-    };
 
     // before this date we didn't have -std packages
     let end_at = chrono::Date::from_utc(
@@ -1022,19 +1015,21 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         chrono::Utc,
     );
     let mut first_success = None;
+
     let mut last_failure = if let Some(Bound::Date(date)) = cfg.args.end {
         date
     } else {
         if let Some(date) = Toolchain::default_nightly() {
-            // start date must be prior to end date
-            if !has_start {
-                nightly_date = date;
-            }
-
             date
         } else {
-            today
+            chrono::Utc::now().date()
         }
+    };
+
+    let (mut nightly_date, has_start) = if let Some(Bound::Date(date)) = cfg.args.start {
+        (date, true)
+    } else {
+        (last_failure, false)
     };
 
     let mut nightly_iter = NightlyFinderIter::new(nightly_date);
