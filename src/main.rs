@@ -747,10 +747,26 @@ impl Config {
     }
 }
 
+fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
+    match (&start, &end) {
+        (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
+            bail!(
+                "end should be after start, got start: {:?} and end {:?}",
+		start,
+		end
+            );
+	},
+        _ => {}
+    }
+
+    Ok(())
+}
+
 fn run() -> Result<(), Error> {
     env_logger::try_init()?;
     let args = env::args_os().filter(|a| a != "bisect-rustc");
     let args = Opts::from_iter(args);
+    check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
 
     let client = Client::new();
