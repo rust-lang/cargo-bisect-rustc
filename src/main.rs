@@ -495,10 +495,15 @@ impl Toolchain {
     fn test(&self, cfg: &Config) -> TestOutcome {
         let outcome = if cfg.args.prompt {
             loop {
-                let status = self.run_test(cfg);
+                let output = self.run_test(cfg);
+                let status = output.status();
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
+
+                // FIXME: should this use `Config::default_outcome_of_output`
+                // for inferring the default below, rather than always
+                // defaulting to "mark regressed"?
 
                 match Select::new()
                     .items(&["mark regressed", "mark baseline", "retry"])
@@ -513,17 +518,27 @@ impl Toolchain {
                 }
             }
         } else {
-            if self.run_test(cfg).success() {
-                TestOutcome::Baseline
-            } else {
-                TestOutcome::Regressed
-            }
+            let output = self.run_test(cfg);
+            cfg.default_outcome_of_output(output)
         };
 
         outcome
     }
+}
 
-    fn run_test(&self, cfg: &Config) -> process::ExitStatus {
+impl Config {
+    fn default_outcome_of_output(&self, process::Output) -> TestOutcome {
+        let status = output.status();
+        if status.success() {
+            TestOutcome::Baseline
+        } else {
+            TestOutcome::Regressed
+        }
+    }
+}
+
+impl Toolchain {
+    fn run_test(&self, cfg: &Config) -> process::Output {
         if !cfg.args.preserve_target {
             let _ = fs::remove_dir_all(
                 cfg.args
@@ -557,14 +572,14 @@ impl Toolchain {
             cmd.stdout(Stdio::null());
             cmd.stderr(Stdio::null());
         }
-        let status = match cmd.status() {
-            Ok(status) => status,
+        let output = match cmd.output() {
+            Ok(output) => output,
             Err(err) => {
                 panic!("failed to run {:?}: {:?}", cmd, err);
             }
         };
 
-        status
+        output
     }
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
