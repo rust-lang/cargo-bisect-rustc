@@ -263,7 +263,15 @@ impl Toolchain {
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
             ToolchainSpec::Nightly { ref date } => {
-                format!("bisector-nightly-{}-{}", date.format("%Y-%m-%d"), self.host)
+                // `cargo-bisect-rustc` will avoid downloading nightlies if they are already
+                // installed. However, if the nightly toolchain is set as default, we need
+                // to refer to it using the rustup name, and not the nonstandard name
+                // given to downloaded nightlies.
+                if self.is_current_nightly() {
+                    "nightly".to_string()
+                } else {
+                    format!("bisector-nightly-{}-{}", date.format("%Y-%m-%d"), self.host)
+                }
             }
         }
     }
