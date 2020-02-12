@@ -133,12 +133,18 @@ mod tests {
 
     #[test]
     fn least_satisfying_4() {
-        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i).unwrap(), 2);
+        assert_eq!(
+            least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i).unwrap(),
+            2
+        );
     }
 
     #[test]
     fn least_satisfying_5() {
-        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i).unwrap(), 1);
+        assert_eq!(
+            least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i).unwrap(),
+            1
+        );
     }
 
     #[test]
@@ -151,7 +157,10 @@ mod tests {
 
     #[test]
     fn least_satisfying_7() {
-        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i| *i).unwrap(), 1);
+        assert_eq!(
+            least_satisfying(&[No, Yes, Unknown, Yes], |i| *i).unwrap(),
+            1
+        );
     }
 
     #[test]
