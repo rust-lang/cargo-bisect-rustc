@@ -1232,7 +1232,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 Satisfies::Unknown
             }
         }
-    });
+    })?;
 
     Ok(BisectionResult {
         dl_spec,
@@ -1345,7 +1345,7 @@ fn bisect_ci_between(cfg: &Config, client: &Client, start: &str, end: &str) -> R
                 Satisfies::Unknown
             }
         }
-    });
+    })?;
 
     Ok(BisectionResult {
         searched: toolchains,
@@ -1366,7 +1366,7 @@ fn main() {
         match err.downcast::<ExitStatusError>() {
             Ok(ExitStatusError(code)) => process::exit(code),
             Err(err) => {
-                eprintln!("{}", err);
+                eprintln!("Error: {}", err);
                 process::exit(1);
             }
         }
