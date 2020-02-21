@@ -31,7 +31,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::str::FromStr;
@@ -87,6 +87,16 @@ fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
       --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
     ```")]
 struct Opts {
+    #[structopt(
+        long = "regress",
+        default_value = "error",
+        help = "Customize what is treated as regression.",
+        long_help = "Customize what is treated as regression. \
+                     Values include `--regress=error`, `--regress=non-error`, \
+                     `--regress=ice`, and `--regress=success`."
+    )]
+    regress: String,
+
     #[structopt(
         short = "a", long = "alt", help = "Download the alt build instead of normal build"
     )]
@@ -442,6 +452,7 @@ enum InstallError {
     Move(#[cause] io::Error),
 }
 
+#[derive(Debug)]
 enum TestOutcome {
     Baseline,
     Regressed,
@@ -495,14 +506,20 @@ impl Toolchain {
     fn test(&self, cfg: &Config) -> TestOutcome {
         let outcome = if cfg.args.prompt {
             loop {
-                let status = self.run_test(cfg);
+                let output = self.run_test(cfg);
+                let status = output.status;
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
 
+                let default_choice = match cfg.default_outcome_of_output(output) {
+                    TestOutcome::Regressed => 0,
+                    TestOutcome::Baseline => 1,
+                };
+
                 match Select::new()
                     .items(&["mark regressed", "mark baseline", "retry"])
-                    .default(0)
+                    .default(default_choice)
                     .interact()
                     .unwrap()
                 {
@@ -513,17 +530,120 @@ impl Toolchain {
                 }
             }
         } else {
-            if self.run_test(cfg).success() {
-                TestOutcome::Baseline
-            } else {
-                TestOutcome::Regressed
-            }
+            let output = self.run_test(cfg);
+            cfg.default_outcome_of_output(output)
         };
 
         outcome
     }
+}
 
-    fn run_test(&self, cfg: &Config) -> process::ExitStatus {
+impl Config {
+    fn default_outcome_of_output(&self, output: process::Output) -> TestOutcome {
+        let status = output.status;
+        let stdout_utf8 = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr_utf8 = String::from_utf8_lossy(&output.stderr).to_string();
+
+        debug!("status: {:?} stdout: {:?} stderr: {:?}", status, stdout_utf8, stderr_utf8);
+
+        let saw_ice = || -> bool {
+            stderr_utf8.contains("error: internal compiler error")
+        };
+
+        let input = (self.output_processing_mode(), status.success());
+        let result = match input {
+            (OutputProcessingMode::RegressOnErrorStatus, true) => TestOutcome::Baseline,
+            (OutputProcessingMode::RegressOnErrorStatus, false) => TestOutcome::Regressed,
+
+            (OutputProcessingMode::RegressOnSuccessStatus, true) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnSuccessStatus, false) => TestOutcome::Baseline,
+
+            (OutputProcessingMode::RegressOnIceAlone, _) => {
+                if saw_ice() { TestOutcome::Regressed } else { TestOutcome::Baseline }
+            }
+
+            (OutputProcessingMode::RegressOnNonCleanError, true) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnNonCleanError, false) => {
+                if saw_ice() { TestOutcome::Regressed } else { TestOutcome::Baseline }
+            }
+        };
+        debug!("default_outcome_of_output: input: {:?} result: {:?}", input, result);
+        result
+    }
+
+    fn output_processing_mode(&self) -> OutputProcessingMode {
+        match self.args.regress.as_str() {
+            "error" => OutputProcessingMode::RegressOnErrorStatus,
+            "non-error" => OutputProcessingMode::RegressOnNonCleanError,
+            "ice" => OutputProcessingMode::RegressOnIceAlone,
+            "success" => OutputProcessingMode::RegressOnSuccessStatus,
+            setting => panic!("Unknown --regress setting: {:?}", setting),
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, StructOpt)]
+/// Customize what is treated as regression.
+enum OutputProcessingMode {
+    /// `RegressOnErrorStatus`: Marks test outcome as `Regressed` if and only if
+    /// the `rustc` process reports a non-success status. This corresponds to
+    /// when `rustc` has an internal compiler error (ICE) or when it detects an
+    /// error in the input program.
+    ///
+    /// This covers the most common use case for `cargo-bisect-rustc` and is
+    /// thus the default setting.
+    ///
+    /// You explicitly opt into this seting via `--regress=error`.
+    RegressOnErrorStatus,
+
+    /// `RegressOnSuccessStatus`: Marks test outcome as `Regressed` if and only
+    /// if the `rustc` process reports a success status. This corresponds to
+    /// when `rustc` believes it has successfully compiled the program. This
+    /// covers the use case for when you want to bisect to see when a bug was
+    /// fixed.
+    ///
+    /// You explicitly opt into this seting via `--regress=success`.
+    RegressOnSuccessStatus,
+
+    /// `RegressOnIceAlone`: Marks test outcome as `Regressed` if and only if
+    /// the `rustc` process issues a diagnostic indicating that an internal
+    /// compiler error (ICE) occurred. This covers the use case for when you
+    /// want to bisect to see when an ICE was introduced pon a codebase that is
+    /// meant to produce a clean error.
+    ///
+    /// You explicitly opt into this seting via `--regress=ice`.
+    RegressOnIceAlone,
+
+    /// `RegressOnNonCleanError`: Marks test outcome as `Baseline` if and only
+    /// if the `rustc` process reports error status and does not issue any
+    /// diagnostic indicating that an internal compiler error (ICE) occurred.
+    /// This is the use case if the regression is a case where an ill-formed
+    /// program has stopped being properly rejected by the compiler.
+    ///
+    /// (The main difference between this case and `RegressOnSuccessStatus` is
+    /// the handling of ICE: `RegressOnSuccessStatus` assumes that ICE should be
+    /// considered baseline; `RegressOnNonCleanError` assumes ICE should be
+    /// considered a sign of a regression.)
+    ///
+    /// You explicitly opt into this seting via `--regress=non-error`.
+    RegressOnNonCleanError,
+
+}
+
+impl OutputProcessingMode {
+    fn must_process_stderr(&self) -> bool {
+        match self {
+            OutputProcessingMode::RegressOnErrorStatus |
+            OutputProcessingMode::RegressOnSuccessStatus => false,
+
+            OutputProcessingMode::RegressOnNonCleanError |
+            OutputProcessingMode::RegressOnIceAlone => true,
+        }
+    }
+}
+
+impl Toolchain {
+    fn run_test(&self, cfg: &Config) -> process::Output {
         if !cfg.args.preserve_target {
             let _ = fs::remove_dir_all(
                 cfg.args
@@ -550,21 +670,35 @@ impl Toolchain {
         };
         cmd.current_dir(&cfg.args.test_dir);
         cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
-        if cfg.args.emit_cargo_output() || cfg.args.prompt {
-            cmd.stdout(Stdio::inherit());
-            cmd.stderr(Stdio::inherit());
+
+        // let `cmd` capture stderr for us to process afterward.
+        let must_capture_output = cfg.output_processing_mode().must_process_stderr();
+        let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
+
+        let default_stdio = || if must_capture_output {
+            Stdio::piped()
+        } else if emit_output {
+            Stdio::inherit()
         } else {
-            cmd.stdout(Stdio::null());
-            cmd.stderr(Stdio::null());
-        }
-        let status = match cmd.status() {
-            Ok(status) => status,
+            Stdio::null()
+        };
+
+        cmd.stdout(default_stdio());
+        cmd.stderr(default_stdio());
+
+        let output = match cmd.output() {
+            Ok(output) => output,
             Err(err) => {
                 panic!("failed to run {:?}: {:?}", cmd, err);
             }
         };
 
-        status
+        // if we captured the stdout above but still need to emit it, then do so now
+        if must_capture_output && emit_output {
+            io::stdout().write_all(&output.stdout).unwrap();
+            io::stderr().write_all(&output.stderr).unwrap();
+        }
+        output
     }
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
