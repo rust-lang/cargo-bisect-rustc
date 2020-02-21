@@ -269,7 +269,7 @@ impl Toolchain {
         match self.spec {
             ToolchainSpec::Ci { ref commit, alt } => {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
-                format!("ci-{}{}-{}", commit, alt_s, self.host)
+                format!("bisector-ci-{}{}-{}", commit, alt_s, self.host)
             }
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
@@ -494,11 +494,15 @@ impl Toolchain {
     }
 
     fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
-        if !self.is_current_nightly() {
-            eprintln!("uninstalling {}", self);
-            let dir = dl_params.install_dir.join(self.rustup_name());
-            fs::remove_dir_all(&dir)?;
-        }
+        eprintln!("uninstalling {}", self);
+        let rustup_name = self.rustup_name();
+
+        // Guard aginst destroying directories that this tool didn't create.
+        assert!(rustup_name.starts_with("bisector-nightly") ||
+                rustup_name.starts_with("bisector-ci"));
+
+        let dir = dl_params.install_dir.join(rustup_name);
+        fs::remove_dir_all(&dir)?;
 
         Ok(())
     }
