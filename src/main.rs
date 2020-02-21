@@ -495,6 +495,14 @@ impl Toolchain {
 
     fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
         eprintln!("uninstalling {}", self);
+        self.do_remove(dl_params)
+    }
+
+    /// Removes the (previously installed) bisector rustc described by `dl_params`.
+    ///
+    /// The main reason to call this (instead of `fs::remove_dir_all` directly)
+    /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
+    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
         let rustup_name = self.rustup_name();
 
         // Guard aginst destroying directories that this tool didn't create.
@@ -711,7 +719,7 @@ impl Toolchain {
             .map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
         if dl_params.force_install {
-            let _ = fs::remove_dir_all(&dest);
+            let _ = self.do_remove(dl_params);
         }
 
         if dest.is_dir() {
