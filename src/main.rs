@@ -62,9 +62,17 @@ const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
 
+mod errors;
 mod git;
 mod least_satisfying;
 use least_satisfying::{least_satisfying, Satisfies};
+use errors::{
+    ArchiveError,
+    BoundParseError,
+    DownloadError,
+    ExitError,
+    InstallError,
+};
 
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
     eprintln!("fetching commits from {} to {}", start, end);
@@ -185,10 +193,6 @@ enum Bound {
     Date(Date<Utc>),
 }
 
-#[derive(Fail, Debug)]
-#[fail(display = "will never happen")]
-struct BoundParseError {}
-
 impl FromStr for Bound {
     type Err = BoundParseError;
     fn from_str(s: &str) -> Result<Bound, BoundParseError> {
@@ -226,15 +230,6 @@ impl Bound {
 impl Opts {
     fn emit_cargo_output(&self) -> bool {
         self.verbosity >= 2
-    }
-}
-
-#[derive(Debug, Fail)]
-struct ExitError(i32);
-
-impl fmt::Display for ExitError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "exiting with {}", self.0)
     }
 }
 
@@ -331,24 +326,6 @@ impl DownloadParams {
     }
 }
 
-#[derive(Fail, Debug)]
-enum ArchiveError {
-    #[fail(display = "Failed to parse archive: {}", _0)]
-    Archive(#[cause] io::Error),
-    #[fail(display = "Failed to create directory: {}", _0)]
-    CreateDir(#[cause] io::Error),
-}
-
-#[derive(Fail, Debug)]
-enum DownloadError {
-    #[fail(display = "Tarball not found at {}", _0)]
-    NotFound(String),
-    #[fail(display = "A reqwest error occurred: {}", _0)]
-    Reqwest(#[cause] reqwest::Error),
-    #[fail(display = "An archive error occurred: {}", _0)]
-    Archive(#[cause] ArchiveError),
-}
-
 fn download_progress(
     client: &Client,
     name: &str,
@@ -438,18 +415,6 @@ fn download_tarball(
         Err(e) => return Err(e),
     }
     download_tar_gz(client, name, &format!("{}.gz", url,), strip_prefix, dest)
-}
-
-#[derive(Fail, Debug)]
-enum InstallError {
-    #[fail(display = "Could not find {}; url: {}", spec, url)]
-    NotFound { url: String, spec: ToolchainSpec },
-    #[fail(display = "Could not download toolchain: {}", _0)]
-    Download(#[cause] DownloadError),
-    #[fail(display = "Could not create tempdir: {}", _0)]
-    TempDir(#[cause] io::Error),
-    #[fail(display = "Could not move tempdir into destination: {}", _0)]
-    Move(#[cause] io::Error),
 }
 
 #[derive(Debug)]
