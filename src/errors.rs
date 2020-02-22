@@ -23,10 +23,6 @@ pub(crate) enum ArchiveError {
 }
 
 #[derive(Fail, Debug)]
-#[fail(display = "will never happen")]
-pub(crate) struct NeverError {}
-
-#[derive(Fail, Debug)]
 pub(crate) enum DownloadError {
     #[fail(display = "Tarball not found at {}", _0)]
     NotFound(String),
@@ -51,3 +47,7 @@ pub(crate) enum InstallError {
     #[fail(display = "Could not move tempdir into destination: {}", _0)]
     Move(#[cause] io::Error),
 }
+
+#[derive(Fail, Debug)]
+#[fail(display = "will never happen")]
+pub(crate) struct NeverError {}
