@@ -65,6 +65,7 @@ const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
 mod errors;
 mod git;
 mod least_satisfying;
+
 use least_satisfying::{least_satisfying, Satisfies};
 use errors::{
     ArchiveError,
@@ -468,10 +469,10 @@ impl Toolchain {
         Ok(())
     }
 
-    fn test(&self, cfg: &Config) -> TestOutcome {
+    fn test(&self, cfg: &Config) -> Result<TestOutcome, Error> {
         let outcome = if cfg.args.prompt {
             loop {
-                let output = self.run_test(cfg);
+                let output = self.run_test(cfg)?;
                 let status = output.status;
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
@@ -495,11 +496,11 @@ impl Toolchain {
                 }
             }
         } else {
-            let output = self.run_test(cfg);
+            let output = self.run_test(cfg)?;
             cfg.default_outcome_of_output(output)
         };
 
-        outcome
+        Ok(outcome)
     }
 }
 
@@ -608,7 +609,7 @@ impl OutputProcessingMode {
 }
 
 impl Toolchain {
-    fn run_test(&self, cfg: &Config) -> process::Output {
+    fn run_test(&self, cfg: &Config) -> Result<process::Output, Error> {
         if !cfg.args.preserve_target {
             let _ = fs::remove_dir_all(
                 cfg.args
@@ -654,7 +655,7 @@ impl Toolchain {
         let output = match cmd.output() {
             Ok(output) => output,
             Err(err) => {
-                panic!("failed to run {:?}: {:?}", cmd, err);
+                bail!("failed to run {:?}: {:?}", cmd, err)
             }
         };
 
@@ -663,7 +664,7 @@ impl Toolchain {
             io::stdout().write_all(&output.stdout).unwrap();
             io::stderr().write_all(&output.stderr).unwrap();
         }
-        output
+        Ok(output)
     }
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
@@ -913,10 +914,10 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
 fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     if cfg.is_commit {
         let bisection_result = bisect_ci(&cfg, &client)?;
-        print_results(cfg, client, &bisection_result);
+        print_results(cfg, client, &bisection_result)?;
     } else {
         let nightly_bisection_result = bisect_nightlies(&cfg, &client)?;
-        print_results(cfg, client, &nightly_bisection_result);
+        print_results(cfg, client, &nightly_bisection_result)?;
         let nightly_regression = &nightly_bisection_result.searched[nightly_bisection_result.found];
 
         if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
@@ -931,7 +932,7 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
                     );
 
                     let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
-                    print_results(cfg, client, &ci_bisection_result);
+                    print_results(cfg, client, &ci_bisection_result)?;
                     print_final_report(&nightly_bisection_result, &ci_bisection_result);
                 }
             }
@@ -941,7 +942,7 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     Ok(())
 }
 
-fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
+fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) -> Result<(), Error> {
     let BisectionResult {
         searched: toolchains,
         dl_spec,
@@ -958,7 +959,7 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
         let t = &toolchains[*found];
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg);
+                let outcome = t.test(&cfg)?;
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
@@ -976,13 +977,13 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
         match r {
             Satisfies::Yes => {}
             Satisfies::No | Satisfies::Unknown => {
-                eprintln!("error: The regression was not found. Expanding the bounds may help.");
-                return;
+                bail!("The regression was not found. Expanding the bounds may help.")
             }
         }
     }
 
     eprintln!("regression in {}", toolchains[*found]);
+    Ok(())
 }
 
 fn print_final_report(
@@ -1165,7 +1166,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         }
         match t.install(client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg);
+                let outcome = t.test(&cfg)?;
 
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
@@ -1214,7 +1215,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let found = least_satisfying(&toolchains, |t| {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg);
+                // TODO (@chrissimpkins): handle errors in this closure through least_satisfying
+                // This line will still panic on calls to Toolchain.test
+                let outcome = t.test(&cfg).unwrap();
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {
                     TestOutcome::Baseline => Satisfies::No,
@@ -1327,7 +1330,9 @@ fn bisect_ci_between(cfg: &Config, client: &Client, start: &str, end: &str) -> R
         match t.install(&client, &dl_spec) {
             Ok(()) => {
                 eprintln!("testing {}", t);
-                let outcome = t.test(&cfg);
+                // TODO (@chrissimpkins): handle errors in this closure through least_satisfying
+                // This line will still panic on calls to Toolchain.test
+                let outcome = t.test(&cfg).unwrap();
                 // we want to fail, so a successful build doesn't satisfy us
                 let r = match outcome {
                     TestOutcome::Regressed => Satisfies::Yes,
