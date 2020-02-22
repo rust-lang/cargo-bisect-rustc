@@ -5,27 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-extern crate chrono;
-extern crate dialoguer;
-extern crate dirs;
-extern crate env_logger;
 #[macro_use]
 extern crate failure;
-extern crate flate2;
-extern crate git2;
 #[macro_use]
 extern crate log;
-extern crate pbr;
 #[cfg(test)]
 extern crate quickcheck;
-extern crate regex;
-extern crate reqwest;
-extern crate rustc_version;
-extern crate structopt;
-extern crate tar;
-extern crate tee;
-extern crate tempdir;
-extern crate xz2;
 
 use std::env;
 use std::ffi::OsString;
