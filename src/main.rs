@@ -90,10 +90,9 @@ struct Opts {
     #[structopt(
         long = "regress",
         default_value = "error",
-        help = "Customize what is treated as regression.",
-        long_help = "Customize what is treated as regression. \
-                     Values include `--regress=error`, `--regress=non-error`, \
-                     `--regress=ice`, and `--regress=success`."
+        help = "Custom regression definition",
+        long_help = "Custom regression definition \
+                     [error|non-error|ice|success]"
     )]
     regress: String,
 
@@ -105,7 +104,7 @@ struct Opts {
     #[structopt(long = "host", help = "Host triple for the compiler", default_value = "unknown")]
     host: String,
 
-    #[structopt(long = "target", help = "Target platform to install for cross-compilation")]
+    #[structopt(long = "target", help = "Cross-compilation target platform")]
     target: Option<String>,
 
     #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
@@ -115,18 +114,18 @@ struct Opts {
     preserve_target: bool,
 
     #[structopt(
-        long = "with-cargo", help = "Download cargo, by default the installed cargo is used"
+        long = "with-cargo", help = "Download cargo [default: installed cargo]"
     )]
     with_cargo: bool,
 
     #[structopt(
-        long = "with-src", help = "Download rust-src, by default this is not downloaded"
+        long = "with-src", help = "Download rust-src [default: no download]"
     )]
     with_src: bool,
 
     #[structopt(
         long = "test-dir",
-        help = "Directory to test; this is where you usually run `cargo build`",
+        help = "Root directory for tests",
         default_value = ".",
         parse(from_os_str)
     )]
@@ -134,8 +133,7 @@ struct Opts {
 
     #[structopt(
         long = "prompt",
-        help = "Display a prompt in between runs to allow for manually \
-                inspecting output and retrying."
+        help = "Manually evaluate for regression with prompts"
     )]
     prompt: bool,
 
@@ -143,7 +141,7 @@ struct Opts {
     verbosity: usize,
 
     #[structopt(
-        help = "Arguments to pass to cargo when running",
+        help = "Arguments to pass to cargo during tests",
         raw(multiple = "true", last = "true"),
         parse(from_os_str)
     )]
@@ -151,29 +149,29 @@ struct Opts {
 
     #[structopt(
         long = "start",
-        help = "the left-bound for the search; this point should *not* have the regression"
+        help = "Left bound for search (*without* regression)"
     )]
     start: Option<Bound>,
 
     #[structopt(
-        long = "end", help = "the right-bound for the search; this point should have the regression"
+        long = "end", help = "Right bound for search (*with* regression)"
     )]
     end: Option<Bound>,
 
     #[structopt(
-        long = "by-commit", help = "without specifying bounds, bisect via commit artifacts"
+        long = "by-commit", help = "Bisect via commit artifacts"
     )]
     by_commit: bool,
 
-    #[structopt(long = "install", help = "install the given artifact")]
+    #[structopt(long = "install", help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[structopt(long = "force-install", help = "force installation over existing artifacts")]
+    #[structopt(long = "force-install", help = "Force installation over existing artifacts")]
     force_install: bool,
 
     #[structopt(
         long = "script",
-        help = "script to run instead of cargo to test for regression",
+        help = "Script replacement for `cargo build` command",
         parse(from_os_str)
     )]
     script: Option<PathBuf>,
