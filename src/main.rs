@@ -5,12 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate log;
-
-
 use std::env;
 use std::ffi::OsString;
 use std::fmt;
@@ -22,8 +16,9 @@ use std::str::FromStr;
 
 use chrono::{Date, Duration, naive, Utc};
 use dialoguer::Select;
-use failure::Error;
+use failure::{bail, format_err, Fail, Error};
 use flate2::read::GzDecoder;
+use log::debug;
 use pbr::{ProgressBar, Units};
 use regex::Regex;
 use reqwest::header::CONTENT_LENGTH;
