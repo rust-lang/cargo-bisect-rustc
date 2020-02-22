@@ -37,13 +37,8 @@ pub(crate) enum DownloadError {
 }
 
 #[derive(Debug, Fail)]
-pub(crate) struct ExitError(i32);
-
-impl fmt::Display for ExitError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "exiting with {}", self.0)
-    }
-}
+#[fail(display = "exiting with {}", _0)]
+pub(crate) struct ExitStatusError(pub(crate) i32);
 
 #[derive(Fail, Debug)]
 pub(crate) enum InstallError {

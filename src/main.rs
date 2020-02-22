@@ -70,7 +70,7 @@ use errors::{
     ArchiveError,
     BoundParseError,
     DownloadError,
-    ExitError,
+    ExitStatusError,
     InstallError,
 };
 
@@ -1363,8 +1363,8 @@ struct BisectionResult {
 
 fn main() {
     if let Err(err) = run() {
-        match err.downcast::<ExitError>() {
-            Ok(ExitError(code)) => process::exit(code),
+        match err.downcast::<ExitStatusError>() {
+            Ok(ExitStatusError(code)) => process::exit(code),
             Err(err) => {
                 eprintln!("{}", err);
                 process::exit(1);
