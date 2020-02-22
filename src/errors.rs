@@ -7,7 +7,6 @@
 
 //! Custom errors for cargo-bisect-rustc
 
-use std::fmt;
 use std::io;
 
 use failure::Fail;
