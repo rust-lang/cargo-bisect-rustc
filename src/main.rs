@@ -9,8 +9,7 @@
 extern crate failure;
 #[macro_use]
 extern crate log;
-#[cfg(test)]
-extern crate quickcheck;
+
 
 use std::env;
 use std::ffi::OsString;
@@ -219,7 +218,7 @@ impl Opts {
 struct ExitError(i32);
 
 impl fmt::Display for ExitError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "exiting with {}", self.0)
     }
 }
@@ -238,7 +237,7 @@ enum ToolchainSpec {
 }
 
 impl fmt::Display for ToolchainSpec {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ToolchainSpec::Ci { ref commit, alt } => {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
@@ -266,7 +265,7 @@ impl Toolchain {
 }
 
 impl fmt::Display for Toolchain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.spec {
             ToolchainSpec::Ci { ref commit, alt } => {
                 let alt_s = if alt { format!("-alt") } else { String::new() };

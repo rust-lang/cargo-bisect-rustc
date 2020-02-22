@@ -26,7 +26,7 @@ pub struct Commit {
 
 impl Commit {
     // Takes &mut because libgit2 internally caches summaries
-    fn from_git2_commit(commit: &mut Git2Commit) -> Self {
+    fn from_git2_commit(commit: &mut Git2Commit<'_>) -> Self {
         Commit {
             sha: commit.id().to_string(),
             date: Utc.timestamp(commit.time().seconds(), 0),
@@ -83,7 +83,7 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<
 
     // Sanity check -- our algorithm below only works reliably if the
     // two commits are merge commits made by bors
-    let assert_by_bors = |c: &Git2Commit| -> Result<(), Error> {
+    let assert_by_bors = |c: &Git2Commit<'_>| -> Result<(), Error> {
         match c.author().name() {
             Some("bors") => Ok(()),
             Some(author) => bail!("Expected author {} to be bors for {}", author, c.id()),
