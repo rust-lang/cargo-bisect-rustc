@@ -36,6 +36,11 @@ use tee::TeeReader;
 use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
+mod git;
+mod least_satisfying;
+
+use crate::least_satisfying::{least_satisfying, Satisfies};
+
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
 ///
@@ -46,10 +51,6 @@ const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 
 const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
-
-mod git;
-mod least_satisfying;
-use least_satisfying::{least_satisfying, Satisfies};
 
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
     eprintln!("fetching commits from {} to {}", start, end);
