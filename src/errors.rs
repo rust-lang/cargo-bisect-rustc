@@ -24,7 +24,7 @@ pub(crate) enum ArchiveError {
 
 #[derive(Fail, Debug)]
 #[fail(display = "will never happen")]
-pub(crate) struct BoundParseError {}
+pub(crate) struct NeverError {}
 
 #[derive(Fail, Debug)]
 pub(crate) enum DownloadError {

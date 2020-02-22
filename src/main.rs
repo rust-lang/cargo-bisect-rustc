@@ -68,10 +68,10 @@ mod least_satisfying;
 use least_satisfying::{least_satisfying, Satisfies};
 use errors::{
     ArchiveError,
-    BoundParseError,
     DownloadError,
     ExitStatusError,
     InstallError,
+    NeverError,
 };
 
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
@@ -194,8 +194,8 @@ enum Bound {
 }
 
 impl FromStr for Bound {
-    type Err = BoundParseError;
-    fn from_str(s: &str) -> Result<Bound, BoundParseError> {
+    type Err = NeverError;
+    fn from_str(s: &str) -> Result<Bound, NeverError> {
         match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
             Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
             Err(_) => Ok(Bound::Commit(s.to_string())),
