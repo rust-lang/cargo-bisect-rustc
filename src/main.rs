@@ -505,7 +505,7 @@ impl Toolchain {
     fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
         let rustup_name = self.rustup_name();
 
-        // Guard aginst destroying directories that this tool didn't create.
+        // Guard against destroying directories that this tool didn't create.
         assert!(rustup_name.starts_with("bisector-nightly") ||
                 rustup_name.starts_with("bisector-ci"));
 
