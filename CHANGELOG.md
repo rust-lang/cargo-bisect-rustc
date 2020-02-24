@@ -24,8 +24,6 @@
 - Improve documentation: Add documentation on how to list bors' commits for bisections to a PR
 - Improve documentation: Update tutorial
 
-
-
 ## v0.1.0
 
 - initial release
