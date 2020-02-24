@@ -9,6 +9,7 @@ name = "cargo-bisect-rustc"
 readme = "README.md"
 repository = "https://github.com/rust-lang/cargo-bisect-rustc"
 version = "0.2.1"
+edition = "2018"
 
 [dependencies]
 dialoguer = "0.3.0"

@@ -5,28 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-extern crate chrono;
-extern crate dialoguer;
-extern crate dirs;
-extern crate env_logger;
-#[macro_use]
-extern crate failure;
-extern crate flate2;
-extern crate git2;
-#[macro_use]
-extern crate log;
-extern crate pbr;
-#[cfg(test)]
-extern crate quickcheck;
-extern crate regex;
-extern crate reqwest;
-extern crate rustc_version;
-extern crate structopt;
-extern crate tar;
-extern crate tee;
-extern crate tempdir;
-extern crate xz2;
-
 use std::env;
 use std::ffi::OsString;
 use std::fmt;
@@ -38,8 +16,9 @@ use std::str::FromStr;
 
 use chrono::{Date, Duration, naive, Utc};
 use dialoguer::Select;
-use failure::Error;
+use failure::{bail, format_err, Fail, Error};
 use flate2::read::GzDecoder;
+use log::debug;
 use pbr::{ProgressBar, Units};
 use regex::Regex;
 use reqwest::header::CONTENT_LENGTH;
@@ -51,6 +30,11 @@ use tee::TeeReader;
 use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
+mod git;
+mod least_satisfying;
+
+use crate::least_satisfying::{least_satisfying, Satisfies};
+
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
 ///
@@ -61,10 +45,6 @@ const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 
 const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
-
-mod git;
-mod least_satisfying;
-use least_satisfying::{least_satisfying, Satisfies};
 
 fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
     eprintln!("fetching commits from {} to {}", start, end);
@@ -233,7 +213,7 @@ impl Opts {
 struct ExitError(i32);
 
 impl fmt::Display for ExitError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "exiting with {}", self.0)
     }
 }
@@ -252,7 +232,7 @@ enum ToolchainSpec {
 }
 
 impl fmt::Display for ToolchainSpec {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ToolchainSpec::Ci { ref commit, alt } => {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
@@ -280,7 +260,7 @@ impl Toolchain {
 }
 
 impl fmt::Display for Toolchain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.spec {
             ToolchainSpec::Ci { ref commit, alt } => {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
