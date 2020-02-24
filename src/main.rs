@@ -9,6 +9,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
+use std::iter;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
@@ -246,7 +247,7 @@ impl Toolchain {
         match self.spec {
             ToolchainSpec::Ci { ref commit, alt } => {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
-                format!("ci-{}{}-{}", commit, alt_s, self.host)
+                format!("bisector-ci-{}{}-{}", commit, alt_s, self.host)
             }
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
@@ -287,19 +288,16 @@ impl DownloadParams {
             if cfg.args.alt { "-alt" } else { "" }
         );
 
-        DownloadParams {
-            url_prefix: url_prefix,
-            tmp_dir: cfg.rustup_tmp_path.clone(),
-            install_dir: cfg.toolchains_path.clone(),
-            install_cargo: cfg.args.with_cargo,
-            install_src: cfg.args.with_src,
-            force_install: cfg.args.force_install,
-        }
+        Self::from_cfg_with_url_prefix(cfg, url_prefix)
     }
 
     fn for_nightly(cfg: &Config) -> Self {
+        Self::from_cfg_with_url_prefix(cfg, NIGHTLY_SERVER.to_string())
+    }
+
+    fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
         DownloadParams {
-            url_prefix: NIGHTLY_SERVER.to_string(),
+            url_prefix: url_prefix,
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
@@ -428,6 +426,8 @@ enum InstallError {
     TempDir(#[cause] io::Error),
     #[fail(display = "Could not move tempdir into destination: {}", _0)]
     Move(#[cause] io::Error),
+    #[fail(display = "Could not run subcommand {}: {}", command, cause)]
+    Subcommand { command: String, #[cause] cause: io::Error }
 }
 
 #[derive(Debug)]
@@ -472,11 +472,23 @@ impl Toolchain {
     }
 
     fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
-        if !self.is_current_nightly() {
-            eprintln!("uninstalling {}", self);
-            let dir = dl_params.install_dir.join(self.rustup_name());
-            fs::remove_dir_all(&dir)?;
-        }
+        eprintln!("uninstalling {}", self);
+        self.do_remove(dl_params)
+    }
+
+    /// Removes the (previously installed) bisector rustc described by `dl_params`.
+    ///
+    /// The main reason to call this (instead of `fs::remove_dir_all` directly)
+    /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
+    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+        let rustup_name = self.rustup_name();
+
+        // Guard against destroying directories that this tool didn't create.
+        assert!(rustup_name.starts_with("bisector-nightly") ||
+                rustup_name.starts_with("bisector-ci"));
+
+        let dir = dl_params.install_dir.join(rustup_name);
+        fs::remove_dir_all(&dir)?;
 
         Ok(())
     }
@@ -680,23 +692,52 @@ impl Toolchain {
     }
 
     fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
-        if self.is_current_nightly() {
-            // pre existing installation
-            return Ok(());
-        }
-
         debug!("installing {}", self);
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
         if dl_params.force_install {
-            let _ = fs::remove_dir_all(&dest);
+            let _ = self.do_remove(dl_params);
         }
 
         if dest.is_dir() {
             // already installed
             return Ok(());
         }
+
+        if self.is_current_nightly() {
+            // make link to pre-existing installation
+            debug!("installing (via link) {}", self);
+
+            let nightly_path: String = {
+                let cmd = CommandTemplate::new(["rustc", "--print", "sysroot"]
+                                               .iter()
+                                               .map(|s| s.to_string()));
+                let stdout = cmd.output()?.stdout;
+                let output = String::from_utf8_lossy(&stdout);
+                // the output should be the path, terminated by a newline
+                let mut path = output.to_string();
+                let last = path.pop();
+                assert_eq!(last, Some('\n'));
+                path
+            };
+
+            let cmd = CommandTemplate::new(["rustup", "toolchain", "link"]
+                                           .iter()
+                                           .map(|s| s.to_string())
+                                           .chain(iter::once(self.rustup_name()))
+                                           .chain(iter::once(nightly_path)));
+            if cmd.status()?.success() {
+                return Ok(());
+            } else {
+                return Err(InstallError::Subcommand {
+                    command: cmd.string(),
+                    cause: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
+                });
+            }
+        }
+
+        debug!("installing via download {}", self);
 
         let rustc_filename = format!("rustc-nightly-{}", self.host);
 
@@ -769,6 +810,46 @@ impl Toolchain {
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
 
         Ok(())
+    }
+}
+
+// A simpler wrapper struct to make up for impoverished `Command` in libstd.
+struct CommandTemplate(Vec<String>);
+
+impl CommandTemplate {
+    fn new(strings: impl Iterator<Item=String>) -> Self {
+        CommandTemplate(strings.collect())
+    }
+
+    fn command(&self) -> Command {
+        assert!(self.0.len() > 0);
+        let mut cmd = Command::new(&self.0[0]);
+        for arg in &self.0[1..] {
+            cmd.arg(arg);
+        }
+        cmd
+    }
+
+    fn string(&self) -> String {
+        assert!(self.0.len() > 0);
+        let mut s = self.0[0].to_string();
+        for arg in &self.0[1..] {
+            s.push_str(" ");
+            s.push_str(arg);
+        }
+        s
+    }
+
+    fn status(&self) -> Result<process::ExitStatus, InstallError> {
+        self.command().status().map_err(|cause| {
+            InstallError::Subcommand { command: self.string(), cause }
+        })
+    }
+
+    fn output(&self) -> Result<process::Output, InstallError> {
+        self.command().output().map_err(|cause| {
+            InstallError::Subcommand { command: self.string(), cause }
+        })
     }
 }
 
