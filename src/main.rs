@@ -23,7 +23,7 @@ use log::debug;
 use pbr::{ProgressBar, Units};
 use regex::Regex;
 use reqwest::header::CONTENT_LENGTH;
-use reqwest::{Client, Response};
+use reqwest::blocking::{Client, Response};
 use rustc_version::Channel;
 use structopt::StructOpt;
 use tar::Archive;
@@ -123,7 +123,8 @@ struct Opts {
 
     #[structopt(
         help = "Arguments to pass to cargo during tests",
-        raw(multiple = "true", last = "true"),
+        multiple = true, 
+        last = true,
         parse(from_os_str)
     )]
     cargo_args: Vec<OsString>,
