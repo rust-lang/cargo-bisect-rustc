@@ -31,4 +31,4 @@ xz2 = "0.1.6"
 chrono = "0.4.10"
 
 [dev-dependencies]
-quickcheck = "0.7"
+quickcheck = "0.9.2"
