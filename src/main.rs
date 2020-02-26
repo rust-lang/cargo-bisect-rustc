@@ -123,7 +123,8 @@ struct Opts {
 
     #[structopt(
         help = "Arguments to pass to cargo during tests",
-        raw(multiple = "true", last = "true"),
+        multiple = true, 
+        last = true,
         parse(from_os_str)
     )]
     cargo_args: Vec<OsString>,
