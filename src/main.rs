@@ -23,7 +23,7 @@ use log::debug;
 use pbr::{ProgressBar, Units};
 use regex::Regex;
 use reqwest::header::CONTENT_LENGTH;
-use reqwest::{Client, Response};
+use reqwest::blocking::{Client, Response};
 use rustc_version::Channel;
 use structopt::StructOpt;
 use tar::Archive;
