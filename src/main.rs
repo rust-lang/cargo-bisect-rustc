@@ -1298,6 +1298,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         }
         match t.install(client, &dl_spec) {
             Ok(()) => {
+                eprintln!("verifying the start of the range does not reproduce the regression");
                 let outcome = t.test(&cfg);
 
                 if !cfg.args.preserve {
@@ -1305,10 +1306,11 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 }
 
                 if let TestOutcome::Baseline = outcome {
+                    eprintln!("confirmed {} does not reproduce the regression", t);
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
-                    return Err(format_err!("the --start nightly has the regression"))?;
+                    return Err(format_err!("the start of the range to test must not reproduce the regression"))?;
                 } else {
                     last_failure = nightly_date;
                 }
@@ -1322,7 +1324,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                     let _ = t.remove(&dl_spec);
                 }
                 if has_start {
-                    return Err(format_err!("could not find the --start nightly"))?;
+                    return Err(format_err!("could not find {}", t))?;
                 }
             }
             Err(e) => {
@@ -1344,7 +1346,11 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         ToolchainSpec::Nightly { date: last_failure },
     );
 
-    let found = least_satisfying(&toolchains, |t| {
+    // First success check has been performed above so it is not necessary
+    // to repeat it within the least_satisfying function in the call here.
+    // Set `start_check` to false to prevent a repeat check on the same
+    // nightly in `least_satisfying`
+    let found = least_satisfying(&toolchains, false, |t| {
         match t.install(&client, &dl_spec) {
             Ok(()) => {
                 let outcome = t.test(&cfg);
@@ -1488,7 +1494,7 @@ fn bisect_ci_in_commits(
         .collect::<Vec<_>>();
 
     eprintln!("testing commits");
-    let found = least_satisfying(&toolchains, |t| {
+    let found = least_satisfying(&toolchains, true,|t| {
         eprintln!("installing {}", t);
         match t.install(&client, &dl_spec) {
             Ok(()) => {
