@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::str::FromStr;
 
-use chrono::{Date, Duration, naive, Utc};
+use chrono::{Date, DateTime, Duration, naive, Utc};
 use dialoguer::Select;
 use failure::{bail, format_err, Fail, Error};
 use flate2::read::GzDecoder;
@@ -36,6 +36,13 @@ mod least_satisfying;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Commit {
+    pub sha: String,
+    pub date: DateTime<Utc>,
+    pub summary: String,
+}
+
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
 ///
@@ -47,7 +54,7 @@ const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
 
-fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
+fn get_commits(start: &str, end: &str) -> Result<Vec<Commit>, Error> {
     eprintln!("fetching commits from {} to {}", start, end);
     let commits = git::get_commits_between(start, end)?;
     assert_eq!(commits.first().expect("at least one commit").sha, git::expand_commit(start)?);
