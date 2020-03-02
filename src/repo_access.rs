@@ -24,7 +24,12 @@ pub(crate) trait RustRepositoryAccessor {
 #[path="git.rs"]
 mod git;
 
+#[path="github.rs"]
+mod github;
+
 pub(crate) struct AccessViaLocalGit;
+
+pub(crate) struct AccessViaGithub;
 
 impl RustRepositoryAccessor for AccessViaLocalGit {
     fn commit(&self, commit_ref: &str) -> Result<Commit, Error> {
@@ -36,5 +41,32 @@ impl RustRepositoryAccessor for AccessViaLocalGit {
             .map_err(|e| {
                 failure::format_err!("failed during attempt to create/access local git repository: {}", e)
             })
+    }
+}
+
+impl RustRepositoryAccessor for AccessViaGithub {
+    fn commit(&self, commit_ref: &str) -> Result<Commit, Error> {
+        github::get_commit(commit_ref)
+    }
+
+    fn commits(&self, start_sha: &str, end_sha: &str) -> Result<Vec<Commit>, Error> {
+        // `earliest_date` is an lower bound on what we should search in our
+        // github query. Why is it `start` date minus 1?
+        //
+        // Because: the "since" parameter in the github API is an exclusive
+        // bound. We need an inclusive bound, so we go yet another day prior for
+        // this bound on the github search.
+        let since_date = self.bound_to_date(Bound::Commit(start_sha.to_string()))? - chrono::Duration::days(1);
+
+        eprintln!("fetching (via remote github) commits from max({}, {}) to {}",
+                  start_sha, since_date, end_sha);
+
+        let query = github::CommitsQuery {
+            since_date: &since_date.format(crate::YYYY_MM_DD).to_string(),
+            earliest_sha: start_sha,
+            most_recent_sha: end_sha,
+        };
+
+        query.get_commits()
     }
 }

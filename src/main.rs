@@ -35,7 +35,7 @@ mod least_satisfying;
 mod repo_access;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
-use crate::repo_access::{AccessViaLocalGit, RustRepositoryAccessor};
+use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
@@ -946,7 +946,7 @@ impl Config {
         let repo_access: Box<dyn RustRepositoryAccessor>;
         repo_access = match args.access.as_ref().map(|x|x.as_str()) {
             None | Some("checkout") => Box::new(AccessViaLocalGit),
-            Some("github") => unimplemented!(),
+            Some("github") => Box::new(AccessViaGithub),
             Some(other) => bail!("unknown access argument: {}", other),
         };
 
