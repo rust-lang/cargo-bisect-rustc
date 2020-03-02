@@ -966,10 +966,10 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
         (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
             bail!(
                 "end should be after start, got start: {:?} and end {:?}",
-		start,
-		end
+                start,
+                end
             );
-	},
+        },
         _ => {}
     }
 
