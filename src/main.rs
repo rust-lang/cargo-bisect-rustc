@@ -166,10 +166,12 @@ struct Opts {
     script: Option<PathBuf>,
 }
 
+pub type GitDate = Date<Utc>;
+
 #[derive(Clone, Debug)]
 enum Bound {
     Commit(String),
-    Date(Date<Utc>),
+    Date(GitDate),
 }
 
 #[derive(Fail, Debug)]
@@ -235,7 +237,7 @@ struct Toolchain {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum ToolchainSpec {
     Ci { commit: String, alt: bool },
-    Nightly { date: Date<Utc> },
+    Nightly { date: GitDate },
 }
 
 impl fmt::Display for ToolchainSpec {
@@ -447,7 +449,7 @@ enum TestOutcome {
 impl Toolchain {
     /// This returns the date of the default toolchain, if it is a nightly toolchain.
     /// Returns `None` if the installed toolchain is not a nightly toolchain.
-    fn default_nightly() -> Option<Date<Utc>> {
+    fn default_nightly() -> Option<GitDate> {
         let version_meta = rustc_version::version_meta().unwrap();
 
         if let Channel::Nightly = version_meta.channel {
@@ -1160,12 +1162,12 @@ fn print_final_report(
 }
 
 struct NightlyFinderIter {
-    start_date: Date<Utc>,
-    current_date: Date<Utc>,
+    start_date: GitDate,
+    current_date: GitDate,
 }
 
 impl NightlyFinderIter {
-    fn new(start_date: Date<Utc>) -> Self {
+    fn new(start_date: GitDate) -> Self {
         Self {
             start_date,
             current_date: start_date,
@@ -1174,9 +1176,9 @@ impl NightlyFinderIter {
 }
 
 impl Iterator for NightlyFinderIter {
-    type Item = Date<Utc>;
+    type Item = GitDate;
 
-    fn next(&mut self) -> Option<Date<Utc>> {
+    fn next(&mut self) -> Option<GitDate> {
         let current_distance = self.start_date - self.current_date;
 
         let jump_length =
