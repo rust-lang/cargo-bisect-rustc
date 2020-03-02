@@ -178,10 +178,12 @@ enum Bound {
 #[fail(display = "will never happen")]
 struct BoundParseError {}
 
+const YYYY_MM_DD: &'static str = "%Y-%m-%d";
+
 impl FromStr for Bound {
     type Err = BoundParseError;
     fn from_str(s: &str) -> Result<Bound, BoundParseError> {
-        match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        match chrono::NaiveDate::parse_from_str(s, YYYY_MM_DD) {
             Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
             Err(_) => Ok(Bound::Commit(s.to_string())),
         }
@@ -193,7 +195,7 @@ impl Bound {
         match self {
             Bound::Commit(commit) => Ok(Bound::Commit(commit)),
             Bound::Date(date) => {
-                let date_str = date.format("%Y-%m-%d");
+                let date_str = date.format(YYYY_MM_DD);
                 let url = format!("{}/{}/channel-rust-nightly-git-commit-hash.txt", NIGHTLY_SERVER, date_str);
 
                 eprintln!("fetching {}", url);
@@ -262,7 +264,7 @@ impl Toolchain {
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
             ToolchainSpec::Nightly { ref date } => {
-                format!("bisector-nightly-{}-{}", date.format("%Y-%m-%d"), self.host)
+                format!("bisector-nightly-{}-{}", date.format(YYYY_MM_DD), self.host)
             }
         }
     }
@@ -275,7 +277,7 @@ impl fmt::Display for Toolchain {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
                 write!(f, "{}{}", commit, alt_s)
             }
-            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format("%Y-%m-%d")),
+            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format(YYYY_MM_DD)),
         }
     }
 }
@@ -753,7 +755,7 @@ impl Toolchain {
 
         let location = match self.spec {
             ToolchainSpec::Ci { ref commit, .. } => commit.to_string(),
-            ToolchainSpec::Nightly { ref date } => date.format("%Y-%m-%d").to_string(),
+            ToolchainSpec::Nightly { ref date } => date.format(YYYY_MM_DD).to_string(),
         };
 
         // download rustc.
@@ -1030,8 +1032,8 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
                 if let Bound::Commit(working_commit) = Bound::Date(previous_date).as_commit()? {
                     eprintln!(
                         "looking for regression commit between {} and {}",
-                        date.format("%Y-%m-%d"),
-                        previous_date.format("%Y-%m-%d"),
+                        date.format(YYYY_MM_DD),
+                        previous_date.format(YYYY_MM_DD),
                     );
 
                     let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
