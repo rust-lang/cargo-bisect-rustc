@@ -31,10 +31,11 @@ use tee::TeeReader;
 use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
-mod git;
 mod least_satisfying;
+mod repo_access;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
+use crate::repo_access::{AccessViaLocalGit, RustRepositoryAccessor};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
@@ -53,14 +54,6 @@ const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 
 const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
-
-fn get_commits(start: &str, end: &str) -> Result<Vec<Commit>, Error> {
-    eprintln!("fetching commits from {} to {}", start, end);
-    let commits = git::get_commits_between(start, end)?;
-    assert_eq!(commits.first().expect("at least one commit").sha, git::expand_commit(start)?);
-
-    Ok(commits)
-}
 
 #[derive(Debug, StructOpt)]
 #[structopt(after_help = "EXAMPLES:
@@ -151,6 +144,9 @@ struct Opts {
         long = "by-commit", help = "Bisect via commit artifacts"
     )]
     by_commit: bool,
+
+    #[structopt(long = "access", help = "How to access Rust git repository [github|checkout]")]
+    access: Option<String>,
 
     #[structopt(long = "install", help = "Install the given artifact")]
     install: Option<Bound>,
@@ -875,6 +871,7 @@ struct Config {
     toolchains_path: PathBuf,
     target: String,
     is_commit: bool,
+    repo_access: Box<dyn RustRepositoryAccessor>,
 }
 
 impl Config {
@@ -946,12 +943,20 @@ impl Config {
             }
         }
 
+        let repo_access: Box<dyn RustRepositoryAccessor>;
+        repo_access = match args.access.as_ref().map(|x|x.as_str()) {
+            None | Some("checkout") => Box::new(AccessViaLocalGit),
+            Some("github") => unimplemented!(),
+            Some(other) => bail!("unknown access argument: {}", other),
+        };
+
         Ok(Config {
             is_commit: args.by_commit || is_commit == Some(true),
             args,
             target,
             toolchains_path,
             rustup_tmp_path,
+            repo_access,
         })
     }
 }
@@ -990,7 +995,7 @@ fn run() -> Result<(), Error> {
 fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
     match *bound {
         Bound::Commit(ref sha) => {
-            let sha = git::expand_commit(sha)?;
+            let sha = cfg.repo_access.commit(sha)?.sha;
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
                     commit: sha.clone(),
@@ -1040,7 +1045,13 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
                 previous_date.format(YYYY_MM_DD),
             );
 
-            let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
+            let ci_bisection_result = bisect_ci_via(
+                cfg,
+                client,
+                &*cfg.repo_access,
+                &working_commit,
+                &bad_commit)?;
+
             print_results(cfg, client, &ci_bisection_result);
             print_final_report(&nightly_bisection_result, &ci_bisection_result);
         }
@@ -1387,12 +1398,45 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
 
     eprintln!("starting at {}, ending at {}", start, end);
 
-    bisect_ci_between(cfg, client, start, end)
+    bisect_ci_via(cfg, client, &*cfg.repo_access, start, end)
 }
 
-fn bisect_ci_between(cfg: &Config, client: &Client, start: &str, end: &str) -> Result<BisectionResult, Error> {
+fn bisect_ci_via(
+    cfg: &Config,
+    client: &Client,
+    access: &dyn RustRepositoryAccessor,
+    start_sha: &str,
+    end_sha: &str)
+    -> Result<BisectionResult, Error>
+{
+    let commits = access.commits(start_sha, end_sha)?;
+
+    assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
+
+    commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
+        let sorted_by_date = a.date <= b.date;
+        assert!(sorted_by_date, "commits must chronologically ordered,\
+                                 but {:?} comes after {:?}", a, b);
+        sorted_by_date
+    });
+
+    for (j, commit) in commits.iter().enumerate() {
+        eprintln!("  commit[{}] {}: {}", j, commit.date.date(),
+                  commit.summary.split("\n").next().unwrap())
+    }
+
+    bisect_ci_in_commits(cfg, client, &start_sha, &end_sha, commits)
+}
+
+fn bisect_ci_in_commits(
+    cfg: &Config,
+    client: &Client,
+    start: &str,
+    end: &str,
+    mut commits: Vec<Commit>)
+    -> Result<BisectionResult, Error>
+{
     let dl_spec = DownloadParams::for_ci(cfg);
-    let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
     commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
 

@@ -62,10 +62,10 @@ fn get_repo() -> Result<Repository, Error> {
     }
 }
 
-pub fn expand_commit(sha: &str) -> Result<String, Error> {
+pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
     let repo = get_repo()?;
-    let rev = lookup_rev(&repo, sha)?;
-    Ok(rev.id().to_string())
+    let mut rev = lookup_rev(&repo, sha)?;
+    Ok(Commit::from_git2_commit(&mut rev))
 }
 
 /// Returns the bors merge commits between the two specified boundaries
