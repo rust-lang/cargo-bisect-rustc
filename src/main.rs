@@ -191,9 +191,9 @@ impl FromStr for Bound {
 }
 
 impl Bound {
-    fn as_commit(self) -> Result<Self, Error> {
+    fn sha(self) -> Result<String, Error> {
         match self {
-            Bound::Commit(commit) => Ok(Bound::Commit(commit)),
+            Bound::Commit(commit) => Ok(commit),
             Bound::Date(date) => {
                 let date_str = date.format(YYYY_MM_DD);
                 let url = format!("{}/{}/channel-rust-nightly-git-commit-hash.txt", NIGHTLY_SERVER, date_str);
@@ -208,9 +208,13 @@ impl Bound {
 
                 eprintln!("converted {} to {}", date_str, commit);
 
-                Ok(Bound::Commit(commit))
+                Ok(commit)
             }
         }
+    }
+
+    fn as_commit(self) -> Result<Self, Error> {
+        self.sha().map(Bound::Commit)
     }
 }
 
@@ -1028,19 +1032,17 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
             let previous_date = date - chrono::Duration::days(1);
 
-            if let Bound::Commit(bad_commit) = Bound::Date(date).as_commit()? {
-                if let Bound::Commit(working_commit) = Bound::Date(previous_date).as_commit()? {
-                    eprintln!(
-                        "looking for regression commit between {} and {}",
-                        date.format(YYYY_MM_DD),
-                        previous_date.format(YYYY_MM_DD),
-                    );
+            let bad_commit = Bound::Date(date).sha()?;
+            let working_commit = Bound::Date(previous_date).sha()?;
+            eprintln!(
+                "looking for regression commit between {} and {}",
+                date.format(YYYY_MM_DD),
+                previous_date.format(YYYY_MM_DD),
+            );
 
-                    let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
-                    print_results(cfg, client, &ci_bisection_result);
-                    print_final_report(&nightly_bisection_result, &ci_bisection_result);
-                }
-            }
+            let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
+            print_results(cfg, client, &ci_bisection_result);
+            print_final_report(&nightly_bisection_result, &ci_bisection_result);
         }
     }
 
