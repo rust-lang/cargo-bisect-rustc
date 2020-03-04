@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::str::FromStr;
 
-use chrono::{Date, Duration, naive, Utc};
+use chrono::{Date, DateTime, Duration, naive, Utc};
 use dialoguer::Select;
 use failure::{bail, format_err, Fail, Error};
 use flate2::read::GzDecoder;
@@ -31,10 +31,18 @@ use tee::TeeReader;
 use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
-mod git;
 mod least_satisfying;
+mod repo_access;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
+use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Commit {
+    pub sha: String,
+    pub date: DateTime<Utc>,
+    pub summary: String,
+}
 
 /// The first commit which build artifacts are made available through the CI for
 /// bisection.
@@ -46,14 +54,6 @@ const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 
 const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
-
-fn get_commits(start: &str, end: &str) -> Result<Vec<git::Commit>, Error> {
-    eprintln!("fetching commits from {} to {}", start, end);
-    let commits = git::get_commits_between(start, end)?;
-    assert_eq!(commits.first().expect("at least one commit").sha, git::expand_commit(start)?);
-
-    Ok(commits)
-}
 
 #[derive(Debug, StructOpt)]
 #[structopt(after_help = "EXAMPLES:
@@ -145,6 +145,9 @@ struct Opts {
     )]
     by_commit: bool,
 
+    #[structopt(long = "access", help = "How to access Rust git repository [github|checkout]")]
+    access: Option<String>,
+
     #[structopt(long = "install", help = "Install the given artifact")]
     install: Option<Bound>,
 
@@ -159,20 +162,24 @@ struct Opts {
     script: Option<PathBuf>,
 }
 
+pub type GitDate = Date<Utc>;
+
 #[derive(Clone, Debug)]
 enum Bound {
     Commit(String),
-    Date(Date<Utc>),
+    Date(GitDate),
 }
 
 #[derive(Fail, Debug)]
 #[fail(display = "will never happen")]
 struct BoundParseError {}
 
+const YYYY_MM_DD: &'static str = "%Y-%m-%d";
+
 impl FromStr for Bound {
     type Err = BoundParseError;
     fn from_str(s: &str) -> Result<Bound, BoundParseError> {
-        match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        match chrono::NaiveDate::parse_from_str(s, YYYY_MM_DD) {
             Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
             Err(_) => Ok(Bound::Commit(s.to_string())),
         }
@@ -180,11 +187,11 @@ impl FromStr for Bound {
 }
 
 impl Bound {
-    fn as_commit(self) -> Result<Self, Error> {
+    fn sha(self) -> Result<String, Error> {
         match self {
-            Bound::Commit(commit) => Ok(Bound::Commit(commit)),
+            Bound::Commit(commit) => Ok(commit),
             Bound::Date(date) => {
-                let date_str = date.format("%Y-%m-%d");
+                let date_str = date.format(YYYY_MM_DD);
                 let url = format!("{}/{}/channel-rust-nightly-git-commit-hash.txt", NIGHTLY_SERVER, date_str);
 
                 eprintln!("fetching {}", url);
@@ -197,9 +204,13 @@ impl Bound {
 
                 eprintln!("converted {} to {}", date_str, commit);
 
-                Ok(Bound::Commit(commit))
+                Ok(commit)
             }
         }
+    }
+
+    fn as_commit(self) -> Result<Self, Error> {
+        self.sha().map(Bound::Commit)
     }
 }
 
@@ -228,7 +239,7 @@ struct Toolchain {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum ToolchainSpec {
     Ci { commit: String, alt: bool },
-    Nightly { date: Date<Utc> },
+    Nightly { date: GitDate },
 }
 
 impl fmt::Display for ToolchainSpec {
@@ -253,7 +264,7 @@ impl Toolchain {
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
             ToolchainSpec::Nightly { ref date } => {
-                format!("bisector-nightly-{}-{}", date.format("%Y-%m-%d"), self.host)
+                format!("bisector-nightly-{}-{}", date.format(YYYY_MM_DD), self.host)
             }
         }
     }
@@ -266,7 +277,7 @@ impl fmt::Display for Toolchain {
                 let alt_s = if alt { format!("-alt") } else { String::new() };
                 write!(f, "{}{}", commit, alt_s)
             }
-            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format("%Y-%m-%d")),
+            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format(YYYY_MM_DD)),
         }
     }
 }
@@ -440,7 +451,7 @@ enum TestOutcome {
 impl Toolchain {
     /// This returns the date of the default toolchain, if it is a nightly toolchain.
     /// Returns `None` if the installed toolchain is not a nightly toolchain.
-    fn default_nightly() -> Option<Date<Utc>> {
+    fn default_nightly() -> Option<GitDate> {
         let version_meta = rustc_version::version_meta().unwrap();
 
         if let Channel::Nightly = version_meta.channel {
@@ -744,7 +755,7 @@ impl Toolchain {
 
         let location = match self.spec {
             ToolchainSpec::Ci { ref commit, .. } => commit.to_string(),
-            ToolchainSpec::Nightly { ref date } => date.format("%Y-%m-%d").to_string(),
+            ToolchainSpec::Nightly { ref date } => date.format(YYYY_MM_DD).to_string(),
         };
 
         // download rustc.
@@ -860,6 +871,7 @@ struct Config {
     toolchains_path: PathBuf,
     target: String,
     is_commit: bool,
+    repo_access: Box<dyn RustRepositoryAccessor>,
 }
 
 impl Config {
@@ -931,12 +943,20 @@ impl Config {
             }
         }
 
+        let repo_access: Box<dyn RustRepositoryAccessor>;
+        repo_access = match args.access.as_ref().map(|x|x.as_str()) {
+            None | Some("checkout") => Box::new(AccessViaLocalGit),
+            Some("github") => Box::new(AccessViaGithub),
+            Some(other) => bail!("unknown access argument: {}", other),
+        };
+
         Ok(Config {
             is_commit: args.by_commit || is_commit == Some(true),
             args,
             target,
             toolchains_path,
             rustup_tmp_path,
+            repo_access,
         })
     }
 }
@@ -946,10 +966,10 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
         (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
             bail!(
                 "end should be after start, got start: {:?} and end {:?}",
-		start,
-		end
+                start,
+                end
             );
-	},
+        },
         _ => {}
     }
 
@@ -975,7 +995,7 @@ fn run() -> Result<(), Error> {
 fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
     match *bound {
         Bound::Commit(ref sha) => {
-            let sha = git::expand_commit(sha)?;
+            let sha = cfg.repo_access.commit(sha)?.sha;
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
                     commit: sha.clone(),
@@ -1017,19 +1037,23 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
             let previous_date = date - chrono::Duration::days(1);
 
-            if let Bound::Commit(bad_commit) = Bound::Date(date).as_commit()? {
-                if let Bound::Commit(working_commit) = Bound::Date(previous_date).as_commit()? {
-                    eprintln!(
-                        "looking for regression commit between {} and {}",
-                        date.format("%Y-%m-%d"),
-                        previous_date.format("%Y-%m-%d"),
-                    );
+            let bad_commit = Bound::Date(date).sha()?;
+            let working_commit = Bound::Date(previous_date).sha()?;
+            eprintln!(
+                "looking for regression commit between {} and {}",
+                date.format(YYYY_MM_DD),
+                previous_date.format(YYYY_MM_DD),
+            );
 
-                    let ci_bisection_result = bisect_ci_between(cfg, client, &working_commit, &bad_commit)?;
-                    print_results(cfg, client, &ci_bisection_result);
-                    print_final_report(&nightly_bisection_result, &ci_bisection_result);
-                }
-            }
+            let ci_bisection_result = bisect_ci_via(
+                cfg,
+                client,
+                &*cfg.repo_access,
+                &working_commit,
+                &bad_commit)?;
+
+            print_results(cfg, client, &ci_bisection_result);
+            print_final_report(&nightly_bisection_result, &ci_bisection_result);
         }
     }
 
@@ -1153,12 +1177,12 @@ fn print_final_report(
 }
 
 struct NightlyFinderIter {
-    start_date: Date<Utc>,
-    current_date: Date<Utc>,
+    start_date: GitDate,
+    current_date: GitDate,
 }
 
 impl NightlyFinderIter {
-    fn new(start_date: Date<Utc>) -> Self {
+    fn new(start_date: GitDate) -> Self {
         Self {
             start_date,
             current_date: start_date,
@@ -1167,9 +1191,9 @@ impl NightlyFinderIter {
 }
 
 impl Iterator for NightlyFinderIter {
-    type Item = Date<Utc>;
+    type Item = GitDate;
 
-    fn next(&mut self) -> Option<Date<Utc>> {
+    fn next(&mut self) -> Option<GitDate> {
         let current_distance = self.start_date - self.current_date;
 
         let jump_length =
@@ -1374,12 +1398,45 @@ fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
 
     eprintln!("starting at {}, ending at {}", start, end);
 
-    bisect_ci_between(cfg, client, start, end)
+    bisect_ci_via(cfg, client, &*cfg.repo_access, start, end)
 }
 
-fn bisect_ci_between(cfg: &Config, client: &Client, start: &str, end: &str) -> Result<BisectionResult, Error> {
+fn bisect_ci_via(
+    cfg: &Config,
+    client: &Client,
+    access: &dyn RustRepositoryAccessor,
+    start_sha: &str,
+    end_sha: &str)
+    -> Result<BisectionResult, Error>
+{
+    let commits = access.commits(start_sha, end_sha)?;
+
+    assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
+
+    commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
+        let sorted_by_date = a.date <= b.date;
+        assert!(sorted_by_date, "commits must chronologically ordered,\
+                                 but {:?} comes after {:?}", a, b);
+        sorted_by_date
+    });
+
+    for (j, commit) in commits.iter().enumerate() {
+        eprintln!("  commit[{}] {}: {}", j, commit.date.date(),
+                  commit.summary.split("\n").next().unwrap())
+    }
+
+    bisect_ci_in_commits(cfg, client, &start_sha, &end_sha, commits)
+}
+
+fn bisect_ci_in_commits(
+    cfg: &Config,
+    client: &Client,
+    start: &str,
+    end: &str,
+    mut commits: Vec<Commit>)
+    -> Result<BisectionResult, Error>
+{
     let dl_spec = DownloadParams::for_ci(cfg);
-    let mut commits = get_commits(start, end)?;
     let now = chrono::Utc::now();
     commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
 

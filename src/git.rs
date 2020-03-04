@@ -12,18 +12,13 @@ const RUST_SRC_REPO: Option<&str> = option_env!("RUST_SRC_REPO");
 
 use std::path::Path;
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use failure::{bail, Error};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Commit {
-    pub sha: String,
-    pub date: DateTime<Utc>,
-    pub summary: String,
-}
+use crate::Commit;
 
 impl Commit {
     // Takes &mut because libgit2 internally caches summaries
@@ -67,10 +62,10 @@ fn get_repo() -> Result<Repository, Error> {
     }
 }
 
-pub fn expand_commit(sha: &str) -> Result<String, Error> {
+pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
     let repo = get_repo()?;
-    let rev = lookup_rev(&repo, sha)?;
-    Ok(rev.id().to_string())
+    let mut rev = lookup_rev(&repo, sha)?;
+    Ok(Commit::from_git2_commit(&mut rev))
 }
 
 /// Returns the bors merge commits between the two specified boundaries
