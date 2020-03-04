@@ -73,7 +73,7 @@ struct Opts {
         default_value = "error",
         help = "Custom regression definition",
         long_help = "Custom regression definition \
-                     [error|non-error|ice|success]"
+                     [error|non-error|ice|non-ice|success]"
     )]
     regress: String,
 
@@ -563,6 +563,9 @@ impl Config {
             (OutputProcessingMode::RegressOnIceAlone, _) => {
                 if saw_ice() { TestOutcome::Regressed } else { TestOutcome::Baseline }
             }
+            (OutputProcessingMode::RegressOnNotIce, _) => {
+                if saw_ice() { TestOutcome::Baseline } else { TestOutcome::Regressed }
+            }
 
             (OutputProcessingMode::RegressOnNonCleanError, true) => TestOutcome::Regressed,
             (OutputProcessingMode::RegressOnNonCleanError, false) => {
@@ -578,6 +581,7 @@ impl Config {
             "error" => OutputProcessingMode::RegressOnErrorStatus,
             "non-error" => OutputProcessingMode::RegressOnNonCleanError,
             "ice" => OutputProcessingMode::RegressOnIceAlone,
+            "non-ice" => OutputProcessingMode::RegressOnNotIce,
             "success" => OutputProcessingMode::RegressOnSuccessStatus,
             setting => panic!("Unknown --regress setting: {:?}", setting),
         }
@@ -616,6 +620,14 @@ enum OutputProcessingMode {
     /// You explicitly opt into this seting via `--regress=ice`.
     RegressOnIceAlone,
 
+    /// `RegressOnNotIce`: Marks test outcome as `Regressed` if and only if
+    /// the `rustc` process does not issue a diagnostic indicating that an
+    /// internal compiler error (ICE) occurred. This covers the use case for
+    /// when you want to bisect to see when an ICE was fixed.
+    ///
+    /// You explicitly opt into this setting via `--regress=non-ice`
+    RegressOnNotIce,
+
     /// `RegressOnNonCleanError`: Marks test outcome as `Baseline` if and only
     /// if the `rustc` process reports error status and does not issue any
     /// diagnostic indicating that an internal compiler error (ICE) occurred.
@@ -639,7 +651,8 @@ impl OutputProcessingMode {
             OutputProcessingMode::RegressOnSuccessStatus => false,
 
             OutputProcessingMode::RegressOnNonCleanError |
-            OutputProcessingMode::RegressOnIceAlone => true,
+            OutputProcessingMode::RegressOnIceAlone |
+            OutputProcessingMode::RegressOnNotIce => true,
         }
     }
 }
