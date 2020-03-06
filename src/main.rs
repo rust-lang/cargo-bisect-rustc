@@ -122,12 +122,12 @@ struct Opts {
     verbosity: usize,
 
     #[structopt(
-        help = "Arguments to pass to cargo during tests",
+        help = "Arguments to pass to cargo or the file specified by --script during tests",
         multiple = true, 
         last = true,
         parse(from_os_str)
     )]
-    cargo_args: Vec<OsString>,
+    command_args: Vec<OsString>,
 
     #[structopt(
         long = "start",
@@ -657,15 +657,16 @@ impl Toolchain {
             Some(ref script) => {
                 let mut cmd = Command::new(script);
                 cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
+                cmd.args(&cfg.args.command_args);
                 cmd
             }
             None => {
                 let mut cmd = Command::new("cargo");
                 cmd.arg(&format!("+{}", self.rustup_name()));
-                if cfg.args.cargo_args.is_empty() {
+                if cfg.args.command_args.is_empty() {
                     cmd.arg("build");
                 } else {
-                    cmd.args(&cfg.args.cargo_args);
+                    cmd.args(&cfg.args.command_args);
                 }
                 cmd
             }
