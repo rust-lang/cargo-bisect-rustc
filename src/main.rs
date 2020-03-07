@@ -990,6 +990,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
     Ok(())
 }
 
+// Application entry point
 fn run() -> Result<(), Error> {
     env_logger::try_init()?;
     let args = env::args_os().filter(|a| a != "bisect-rustc");
@@ -1039,6 +1040,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
     Ok(())
 }
 
+// bisection entry point
 fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     if cfg.is_commit {
         let bisection_result = bisect_ci(&cfg, &client)?;
