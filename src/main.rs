@@ -1252,6 +1252,7 @@ fn test_nightly_finder_iterator() {
     assert_eq!(start_date - chrono::Duration::days(78), iter.next().unwrap());
 }
 
+// nightlies branch of bisect execution
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
         bail!("cannot bisect nightlies with --alt: not supported");
@@ -1404,6 +1405,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
     }
 }
 
+// CI branch of bisect execution
 fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     eprintln!("bisecting ci builds");
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
