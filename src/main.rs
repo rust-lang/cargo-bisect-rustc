@@ -1310,7 +1310,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
-                    return Err(format_err!("the start of the range to test must not reproduce the regression"))?;
+                    bail!("the start of the range to test must not reproduce the regression");
                 } else {
                     last_failure = nightly_date;
                 }
@@ -1324,7 +1324,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                     let _ = t.remove(&dl_spec);
                 }
                 if has_start {
-                    return Err(format_err!("could not find {}", t))?;
+                    bail!("could not find {}", t);
                 }
             }
             Err(e) => {
