@@ -131,7 +131,7 @@ impl Toolchain {
         client: &Client,
         dl_params: &DownloadParams,
     ) -> Result<(), InstallError> {
-        debug!("installing {}", self);
+        eprintln!("installing {}", self);
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
