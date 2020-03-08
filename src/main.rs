@@ -163,7 +163,7 @@ enum Bound {
 #[fail(display = "will never happen")]
 struct BoundParseError {}
 
-const YYYY_MM_DD: &'static str = "%Y-%m-%d";
+const YYYY_MM_DD: &str = "%Y-%m-%d";
 
 impl FromStr for Bound {
     type Err = BoundParseError;
@@ -344,7 +344,7 @@ impl CommandTemplate {
     }
 
     fn command(&self) -> Command {
-        assert!(self.0.len() > 0);
+        assert!(!self.0.is_empty());
         let mut cmd = Command::new(&self.0[0]);
         for arg in &self.0[1..] {
             cmd.arg(arg);
@@ -353,7 +353,7 @@ impl CommandTemplate {
     }
 
     fn string(&self) -> String {
-        assert!(self.0.len() > 0);
+        assert!(!self.0.is_empty());
         let mut s = self.0[0].to_string();
         for arg in &self.0[1..] {
             s.push_str(" ");
@@ -509,7 +509,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
             let sha = cfg.repo_access.commit(sha)?.sha;
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
-                    commit: sha.clone(),
+                    commit: sha,
                     alt: cfg.args.alt,
                 },
                 host: cfg.args.host.clone(),
@@ -522,7 +522,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
         }
         Bound::Date(date) => {
             let mut t = Toolchain {
-                spec: ToolchainSpec::Nightly { date: date },
+                spec: ToolchainSpec::Nightly { date },
                 host: cfg.args.host.clone(),
                 std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
             };
@@ -779,7 +779,7 @@ fn install_and_test(
 }
 
 fn bisect_to_regression(
-    toolchains: &Vec<Toolchain>,
+    toolchains: &[Toolchain],
     cfg: &Config,
     client: &Client,
     dl_spec: &DownloadParams) -> Result<usize, InstallError>
@@ -922,7 +922,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
             let mut date = a;
             while date <= b {
                 let mut t = Toolchain {
-                    spec: ToolchainSpec::Nightly { date: date },
+                    spec: ToolchainSpec::Nightly { date },
                     host: cfg.args.host.clone(),
                     std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
                 };
@@ -1017,7 +1017,7 @@ fn bisect_ci_in_commits(
         .map(|commit| {
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
-                    commit: commit.sha.clone(),
+                    commit: commit.sha,
                     alt: cfg.args.alt,
                 },
                 host: cfg.args.host.clone(),

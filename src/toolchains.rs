@@ -30,7 +30,7 @@ use crate::{Config, CommandTemplate};
 
 pub type GitDate = Date<Utc>;
 
-const YYYY_MM_DD: &'static str = "%Y-%m-%d";
+const YYYY_MM_DD: &str = "%Y-%m-%d";
 
 pub(crate) const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
@@ -70,7 +70,7 @@ impl fmt::Display for Toolchain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.spec {
             ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt { format!("-alt") } else { String::new() };
+                let alt_s = if alt { "-alt".to_string() } else { String::new() };
                 write!(f, "{}{}", commit, alt_s)
             }
             ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format(YYYY_MM_DD)),
@@ -82,7 +82,7 @@ impl Toolchain {
     pub(crate) fn rustup_name(&self) -> String {
         match self.spec {
             ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt { format!("-alt") } else { String::new() };
+                let alt_s = if alt { "-alt".to_string() } else { String::new() };
                 format!("bisector-ci-{}{}-{}", commit, alt_s, self.host)
             }
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
@@ -152,7 +152,7 @@ impl Toolchain {
                 let cmd = CommandTemplate::new(
                     ["rustc", "--print", "sysroot"]
                         .iter()
-                        .map(|s| s.to_string()),
+                        .map(|s| (*s).to_string()),
                 );
                 let stdout = cmd.output()?.stdout;
                 let output = String::from_utf8_lossy(&stdout);
@@ -166,7 +166,7 @@ impl Toolchain {
             let cmd = CommandTemplate::new(
                 ["rustup", "toolchain", "link"]
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(|s| (*s).to_string())
                     .chain(iter::once(self.rustup_name()))
                     .chain(iter::once(nightly_path)),
             );
@@ -203,7 +203,7 @@ impl Toolchain {
             match e {
                 DownloadError::NotFound(url) => {
                     return Err(InstallError::NotFound {
-                        url: url,
+                        url,
                         spec: self.spec.clone(),
                     })
                 }
@@ -390,7 +390,7 @@ impl fmt::Display for ToolchainSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt { format!("-alt") } else { String::new() };
+                let alt_s = if alt { "-alt".to_string() } else { String::new() };
                 write!(f, "{}{}", commit, alt_s)
             }
             ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date),
@@ -425,7 +425,7 @@ impl DownloadParams {
 
     pub(crate) fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
         DownloadParams {
-            url_prefix: url_prefix,
+            url_prefix,
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_cargo: cfg.args.with_cargo,
