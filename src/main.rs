@@ -830,7 +830,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 if !cfg.args.preserve {
                     let _ = t.remove(&dl_spec);
                 }
-                return Err(e)?;
+                return Err(e.into());
             }
         }
     }
