@@ -46,7 +46,11 @@ pub(crate) enum InstallError {
     #[fail(display = "Could not move tempdir into destination: {}", _0)]
     Move(#[cause] io::Error),
     #[fail(display = "Could not run subcommand {}: {}", command, cause)]
-    Subcommand { command: String, #[cause] cause: io::Error }
+    Subcommand {
+        command: String,
+        #[cause]
+        cause: io::Error,
+    },
 }
 
 #[derive(Debug)]
@@ -122,7 +126,11 @@ impl Toolchain {
         false
     }
 
-    pub(crate) fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
+    pub(crate) fn install(
+        &self,
+        client: &Client,
+        dl_params: &DownloadParams,
+    ) -> Result<(), InstallError> {
         debug!("installing {}", self);
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
@@ -141,9 +149,11 @@ impl Toolchain {
             debug!("installing (via link) {}", self);
 
             let nightly_path: String = {
-                let cmd = CommandTemplate::new(["rustc", "--print", "sysroot"]
-                    .iter()
-                    .map(|s| s.to_string()));
+                let cmd = CommandTemplate::new(
+                    ["rustc", "--print", "sysroot"]
+                        .iter()
+                        .map(|s| s.to_string()),
+                );
                 let stdout = cmd.output()?.stdout;
                 let output = String::from_utf8_lossy(&stdout);
                 // the output should be the path, terminated by a newline
@@ -153,11 +163,13 @@ impl Toolchain {
                 path
             };
 
-            let cmd = CommandTemplate::new(["rustup", "toolchain", "link"]
-                .iter()
-                .map(|s| s.to_string())
-                .chain(iter::once(self.rustup_name()))
-                .chain(iter::once(nightly_path)));
+            let cmd = CommandTemplate::new(
+                ["rustup", "toolchain", "link"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .chain(iter::once(self.rustup_name()))
+                    .chain(iter::once(nightly_path)),
+            );
             if cmd.status()?.success() {
                 return Ok(());
             } else {
@@ -209,11 +221,14 @@ impl Toolchain {
                     "{}/{}/{}.tar",
                     dl_params.url_prefix, location, rust_std_filename
                 ),
-                Some(&PathBuf::from(&rust_std_filename)
-                    .join(format!("rust-std-{}", target))
-                    .join("lib")),
+                Some(
+                    &PathBuf::from(&rust_std_filename)
+                        .join(format!("rust-std-{}", target))
+                        .join("lib"),
+                ),
                 &tmpdir.path().join("lib"),
-            ).map_err(InstallError::Download)?;
+            )
+            .map_err(InstallError::Download)?;
         }
 
         if dl_params.install_cargo {
@@ -224,7 +239,8 @@ impl Toolchain {
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join("cargo")),
                 tmpdir.path(),
-            ).map_err(InstallError::Download)?;
+            )
+            .map_err(InstallError::Download)?;
         }
 
         if dl_params.install_src {
@@ -235,7 +251,8 @@ impl Toolchain {
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join("rust-src")),
                 tmpdir.path(),
-            ).map_err(InstallError::Download)?;
+            )
+            .map_err(InstallError::Download)?;
         }
 
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
@@ -256,8 +273,9 @@ impl Toolchain {
         let rustup_name = self.rustup_name();
 
         // Guard against destroying directories that this tool didn't create.
-        assert!(rustup_name.starts_with("bisector-nightly") ||
-            rustup_name.starts_with("bisector-ci"));
+        assert!(
+            rustup_name.starts_with("bisector-nightly") || rustup_name.starts_with("bisector-ci")
+        );
 
         let dir = dl_params.install_dir.join(rustup_name);
         fs::remove_dir_all(&dir)?;
@@ -298,12 +316,14 @@ impl Toolchain {
         let must_capture_output = cfg.output_processing_mode().must_process_stderr();
         let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
 
-        let default_stdio = || if must_capture_output {
-            Stdio::piped()
-        } else if emit_output {
-            Stdio::inherit()
-        } else {
-            Stdio::null()
+        let default_stdio = || {
+            if must_capture_output {
+                Stdio::piped()
+            } else if emit_output {
+                Stdio::inherit()
+            } else {
+                Stdio::null()
+            }
         };
 
         cmd.stdout(default_stdio());
@@ -414,7 +434,6 @@ impl DownloadParams {
     }
 }
 
-
 #[derive(Fail, Debug)]
 pub(crate) enum ArchiveError {
     #[fail(display = "Failed to parse archive: {}", _0)]
@@ -445,7 +464,9 @@ pub(crate) fn download_progress(
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(DownloadError::NotFound(url.to_string()));
     }
-    let response = response.error_for_status().map_err(DownloadError::Reqwest)?;
+    let response = response
+        .error_for_status()
+        .map_err(DownloadError::Reqwest)?;
 
     let length = response
         .headers()
@@ -488,7 +509,11 @@ pub(crate) fn download_tar_gz(
     Ok(())
 }
 
-pub(crate) fn unarchive<R: Read>(r: R, strip_prefix: Option<&Path>, dest: &Path) -> Result<(), ArchiveError> {
+pub(crate) fn unarchive<R: Read>(
+    r: R,
+    strip_prefix: Option<&Path>,
+    dest: &Path,
+) -> Result<(), ArchiveError> {
     for entry in Archive::new(r).entries().map_err(ArchiveError::Archive)? {
         let mut entry = entry.map_err(ArchiveError::Archive)?;
         let dest_path = {
