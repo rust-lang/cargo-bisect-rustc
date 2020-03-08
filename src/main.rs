@@ -756,7 +756,6 @@ fn install_and_test(
 {
     match t.install(&client, &dl_spec) {
         Ok(()) => {
-            eprintln!("testing...");
             let outcome = t.test(&cfg);
             // we want to fail, so a successful build doesn't satisfy us
             let r = match outcome {

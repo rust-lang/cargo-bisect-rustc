@@ -345,6 +345,7 @@ impl Toolchain {
     }
 
     pub(crate) fn test(&self, cfg: &Config) -> TestOutcome {
+        eprintln!("testing...");
         let outcome = if cfg.args.prompt {
             loop {
                 let output = self.run_test(cfg);
