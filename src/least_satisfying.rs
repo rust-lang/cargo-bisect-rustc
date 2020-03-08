@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub fn least_satisfying<T, P>(slice: &[T], start_check: bool, mut predicate: P) -> usize
+pub fn least_satisfying<T, P>(slice: &[T], mut predicate: P) -> usize
 where
     T: fmt::Display + fmt::Debug,
     P: FnMut(&T) -> Satisfies,
@@ -16,25 +16,13 @@ where
     let mut cache = BTreeMap::new();
     let mut predicate = |idx: usize| *cache.entry(idx).or_insert_with(|| predicate(&slice[idx]));
     let mut unknown_ranges: Vec<(usize, usize)> = Vec::new();
-    let mut rm_no = 0; // presume that the slice starts with a no
+    // presume that the slice starts with a no
+    // this should be tested before call
+    let mut rm_no = 0;
 
-    if start_check {
-        eprintln!("verifying the start of the range does not reproduce the regression");
-        match predicate(rm_no) {
-            Satisfies::No => {
-                eprintln!("confirmed the start of the range does not reproduce the regression")
-            }
-            _ => panic!("the start of the range to test must not reproduce the regression"),
-        }
-    }
-
-    let mut lm_yes = slice.len() - 1; // presume that the slice ends with a yes
-
-    eprintln!("verifying the end of the range reproduces the regression");
-    match predicate(lm_yes) {
-        Satisfies::Yes => eprintln!("confirmed the end of the range reproduces the regression"),
-        _ => panic!("the end of the range to test must reproduce the regression"),
-    }
+    // presume that the slice ends with a yes
+    // this should be tested before the call
+    let mut lm_yes = slice.len() - 1;
 
     let mut next = (rm_no + lm_yes) / 2;
 
@@ -105,7 +93,7 @@ mod tests {
             }
         }
 
-        let res = least_satisfying(&satisfies_v, true, |i| *i);
+        let res = least_satisfying(&satisfies_v, |i| *i);
         let exp = first_yes.unwrap();
         TestResult::from_bool(res == exp)
     }
@@ -113,7 +101,7 @@ mod tests {
     #[test]
     fn least_satisfying_1() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes], true,|i| *i),
+            least_satisfying(&[No, Unknown, Unknown, No, Yes],|i| *i),
             4
         );
     }
@@ -121,7 +109,7 @@ mod tests {
     #[test]
     fn least_satisfying_1f() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes], false,|i| *i),
+            least_satisfying(&[No, Unknown, Unknown, No, Yes],|i| *i),
             4
         );
     }
@@ -129,7 +117,7 @@ mod tests {
     #[test]
     fn least_satisfying_2() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], true, |i| *i),
+            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i| *i),
             2
         );
     }
@@ -137,45 +125,45 @@ mod tests {
     #[test]
     fn least_satisfying_2f() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], false, |i| *i),
+            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i| *i),
             2
         );
     }
 
     #[test]
     fn least_satisfying_3() {
-        assert_eq!(least_satisfying(&[No, No, No, No, Yes], true, |i| *i), 4);
+        assert_eq!(least_satisfying(&[No, No, No, No, Yes], |i| *i), 4);
     }
 
     #[test]
     fn least_satisfying_3f() {
-        assert_eq!(least_satisfying(&[No, No, No, No, Yes], false, |i| *i), 4);
+        assert_eq!(least_satisfying(&[No, No, No, No, Yes], |i| *i), 4);
     }
 
     #[test]
     fn least_satisfying_4() {
-        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], true, |i| *i), 2);
+        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i), 2);
     }
 
     #[test]
     fn least_satisfying_4f() {
-        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], false, |i| *i), 2);
+        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i), 2);
     }
 
     #[test]
     fn least_satisfying_5() {
-        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], true, |i| *i), 1);
+        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i), 1);
     }
 
     #[test]
     fn least_satisfying_5f() {
-        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], false, |i| *i), 1);
+        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i), 1);
     }
 
     #[test]
     fn least_satisfying_6() {
         assert_eq!(
-            least_satisfying(&[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes], true, |i| *i),
+            least_satisfying(&[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes], |i| *i),
             1
         );
     }
@@ -183,25 +171,25 @@ mod tests {
     #[test]
     fn least_satisfying_6f() {
         assert_eq!(
-            least_satisfying(&[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes], false, |i| *i),
+            least_satisfying(&[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes], |i| *i),
             1
         );
     }
 
     #[test]
     fn least_satisfying_7() {
-        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], true, |i| *i), 1);
+        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i| *i), 1);
     }
 
     #[test]
     fn least_satisfying_7f() {
-        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], false, |i| *i), 1);
+        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i| *i), 1);
     }
 
     #[test]
     fn least_satisfying_8() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], true,|i| *i),
+            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes],|i| *i),
             5
         );
     }
@@ -209,7 +197,7 @@ mod tests {
     #[test]
     fn least_satisfying_8f() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], false,|i| *i),
+            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes],|i| *i),
             5
         );
     }
