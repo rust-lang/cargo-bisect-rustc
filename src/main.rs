@@ -9,33 +9,25 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
-use std::iter;
-use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{self, Command, Stdio};
+use std::io::Read;
+use std::path::PathBuf;
+use std::process::{self, Command};
 use std::str::FromStr;
 
-use chrono::{Date, DateTime, Duration, naive, Utc};
-use dialoguer::Select;
+use chrono::{Date, DateTime, Duration, Utc};
 use failure::{bail, format_err, Fail, Error};
-use flate2::read::GzDecoder;
 use log::debug;
-use pbr::{ProgressBar, Units};
-use regex::Regex;
-use reqwest::header::CONTENT_LENGTH;
-use reqwest::blocking::{Client, Response};
-use rustc_version::Channel;
+use reqwest::blocking::Client;
 use structopt::StructOpt;
-use tar::Archive;
 use tee::TeeReader;
-use tempdir::TempDir;
-use xz2::read::XzDecoder;
 
 mod least_satisfying;
 mod repo_access;
+mod toolchains;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
+use crate::toolchains::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
@@ -51,9 +43,6 @@ pub struct Commit {
 /// artifacts of this commit itself is no longer available, so this may not be entirely useful;
 /// however, it does limit the amount of commits somewhat.
 const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
-
-const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
-const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
 
 #[derive(Debug, StructOpt)]
 #[structopt(after_help = "EXAMPLES:
@@ -174,7 +163,7 @@ enum Bound {
 #[fail(display = "will never happen")]
 struct BoundParseError {}
 
-const YYYY_MM_DD: &'static str = "%Y-%m-%d";
+const YYYY_MM_DD: &str = "%Y-%m-%d";
 
 impl FromStr for Bound {
     type Err = BoundParseError;
@@ -226,317 +215,6 @@ struct ExitError(i32);
 impl fmt::Display for ExitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "exiting with {}", self.0)
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct Toolchain {
-    spec: ToolchainSpec,
-    host: String,
-    std_targets: Vec<String>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-enum ToolchainSpec {
-    Ci { commit: String, alt: bool },
-    Nightly { date: GitDate },
-}
-
-impl fmt::Display for ToolchainSpec {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt { format!("-alt") } else { String::new() };
-                write!(f, "{}{}", commit, alt_s)
-            }
-            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date),
-        }
-    }
-}
-
-impl Toolchain {
-    fn rustup_name(&self) -> String {
-        match self.spec {
-            ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt { format!("-alt") } else { String::new() };
-                format!("bisector-ci-{}{}-{}", commit, alt_s, self.host)
-            }
-            // N.B. We need to call this with a nonstandard name so that rustup utilizes the
-            // fallback cargo logic.
-            ToolchainSpec::Nightly { ref date } => {
-                format!("bisector-nightly-{}-{}", date.format(YYYY_MM_DD), self.host)
-            }
-        }
-    }
-}
-
-impl fmt::Display for Toolchain {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.spec {
-            ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt { format!("-alt") } else { String::new() };
-                write!(f, "{}{}", commit, alt_s)
-            }
-            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format(YYYY_MM_DD)),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct DownloadParams {
-    url_prefix: String,
-    tmp_dir: PathBuf,
-    install_dir: PathBuf,
-    install_cargo: bool,
-    install_src: bool,
-    force_install: bool,
-}
-
-impl DownloadParams {
-    fn for_ci(cfg: &Config) -> Self {
-        let url_prefix = format!(
-            "{}/rustc-builds{}",
-            CI_SERVER,
-            if cfg.args.alt { "-alt" } else { "" }
-        );
-
-        Self::from_cfg_with_url_prefix(cfg, url_prefix)
-    }
-
-    fn for_nightly(cfg: &Config) -> Self {
-        Self::from_cfg_with_url_prefix(cfg, NIGHTLY_SERVER.to_string())
-    }
-
-    fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
-        DownloadParams {
-            url_prefix: url_prefix,
-            tmp_dir: cfg.rustup_tmp_path.clone(),
-            install_dir: cfg.toolchains_path.clone(),
-            install_cargo: cfg.args.with_cargo,
-            install_src: cfg.args.with_src,
-            force_install: cfg.args.force_install,
-        }
-    }
-}
-
-#[derive(Fail, Debug)]
-enum ArchiveError {
-    #[fail(display = "Failed to parse archive: {}", _0)]
-    Archive(#[cause] io::Error),
-    #[fail(display = "Failed to create directory: {}", _0)]
-    CreateDir(#[cause] io::Error),
-}
-
-#[derive(Fail, Debug)]
-enum DownloadError {
-    #[fail(display = "Tarball not found at {}", _0)]
-    NotFound(String),
-    #[fail(display = "A reqwest error occurred: {}", _0)]
-    Reqwest(#[cause] reqwest::Error),
-    #[fail(display = "An archive error occurred: {}", _0)]
-    Archive(#[cause] ArchiveError),
-}
-
-fn download_progress(
-    client: &Client,
-    name: &str,
-    url: &str,
-) -> Result<(Response, ProgressBar<io::Stdout>), DownloadError> {
-    debug!("downloading <{}>...", url);
-
-    let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
-
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err(DownloadError::NotFound(url.to_string()));
-    }
-    let response = response.error_for_status().map_err(DownloadError::Reqwest)?;
-
-    let length = response
-        .headers()
-        .get(CONTENT_LENGTH)
-        .and_then(|c| c.to_str().ok())
-        .and_then(|c| c.parse().ok())
-        .unwrap_or(0);
-    let mut bar = ProgressBar::new(length);
-    bar.set_units(Units::Bytes);
-    bar.message(&format!("{}: ", name));
-
-    Ok((response, bar))
-}
-
-fn download_tar_xz(
-    client: &Client,
-    name: &str,
-    url: &str,
-    strip_prefix: Option<&Path>,
-    dest: &Path,
-) -> Result<(), DownloadError> {
-    let (response, mut bar) = download_progress(client, name, url)?;
-    let response = TeeReader::new(response, &mut bar);
-    let response = XzDecoder::new(response);
-    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)?;
-    Ok(())
-}
-
-fn download_tar_gz(
-    client: &Client,
-    name: &str,
-    url: &str,
-    strip_prefix: Option<&Path>,
-    dest: &Path,
-) -> Result<(), DownloadError> {
-    let (response, mut bar) = download_progress(client, name, url)?;
-    let response = TeeReader::new(response, &mut bar);
-    let response = GzDecoder::new(response);
-    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)?;
-    Ok(())
-}
-
-fn unarchive<R: Read>(r: R, strip_prefix: Option<&Path>, dest: &Path) -> Result<(), ArchiveError> {
-    for entry in Archive::new(r).entries().map_err(ArchiveError::Archive)? {
-        let mut entry = entry.map_err(ArchiveError::Archive)?;
-        let dest_path = {
-            let path = entry.path().map_err(ArchiveError::Archive)?;
-            let sub_path = match strip_prefix {
-                Some(prefix) => path.strip_prefix(prefix).map(PathBuf::from),
-                None => Ok(path.into_owned()),
-            };
-            match sub_path {
-                Ok(sub_path) => dest.join(sub_path),
-                Err(_) => continue,
-            }
-        };
-        fs::create_dir_all(dest_path.parent().unwrap()).map_err(ArchiveError::CreateDir)?;
-        entry.unpack(dest_path).map_err(ArchiveError::Archive)?;
-    }
-
-    Ok(())
-}
-
-fn download_tarball(
-    client: &Client,
-    name: &str,
-    url: &str,
-    strip_prefix: Option<&Path>,
-    dest: &Path,
-) -> Result<(), DownloadError> {
-    match download_tar_xz(client, name, &format!("{}.xz", url,), strip_prefix, dest) {
-        Ok(()) => return Ok(()),
-        Err(DownloadError::NotFound { .. }) => {}
-        Err(e) => return Err(e),
-    }
-    download_tar_gz(client, name, &format!("{}.gz", url,), strip_prefix, dest)
-}
-
-#[derive(Fail, Debug)]
-enum InstallError {
-    #[fail(display = "Could not find {}; url: {}", spec, url)]
-    NotFound { url: String, spec: ToolchainSpec },
-    #[fail(display = "Could not download toolchain: {}", _0)]
-    Download(#[cause] DownloadError),
-    #[fail(display = "Could not create tempdir: {}", _0)]
-    TempDir(#[cause] io::Error),
-    #[fail(display = "Could not move tempdir into destination: {}", _0)]
-    Move(#[cause] io::Error),
-    #[fail(display = "Could not run subcommand {}: {}", command, cause)]
-    Subcommand { command: String, #[cause] cause: io::Error }
-}
-
-#[derive(Debug)]
-enum TestOutcome {
-    Baseline,
-    Regressed,
-}
-
-impl Toolchain {
-    /// This returns the date of the default toolchain, if it is a nightly toolchain.
-    /// Returns `None` if the installed toolchain is not a nightly toolchain.
-    fn default_nightly() -> Option<GitDate> {
-        let version_meta = rustc_version::version_meta().unwrap();
-
-        if let Channel::Nightly = version_meta.channel {
-            if let Some(str_date) = version_meta.commit_date {
-                let regex = Regex::new(r"(?m)^(\d{4})-(\d{2})-(\d{2})$").unwrap();
-                if let Some(cap) = regex.captures(&str_date) {
-                    let year = cap.get(1)?.as_str().parse::<i32>().ok()?;
-                    let month = cap.get(2)?.as_str().parse::<u32>().ok()?;
-                    let day = cap.get(3)?.as_str().parse::<u32>().ok()?;
-
-                    return Some(Date::from_utc(
-                        naive::NaiveDate::from_ymd(year, month, day),
-                        Utc,
-                    ));
-                }
-            }
-        }
-
-        None
-    }
-
-    fn is_current_nightly(&self) -> bool {
-        if let ToolchainSpec::Nightly { date } = self.spec {
-            if let Some(default_date) = Self::default_nightly() {
-                return default_date == date;
-            }
-        }
-
-        false
-    }
-
-    fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
-        eprintln!("uninstalling {}", self);
-        self.do_remove(dl_params)
-    }
-
-    /// Removes the (previously installed) bisector rustc described by `dl_params`.
-    ///
-    /// The main reason to call this (instead of `fs::remove_dir_all` directly)
-    /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
-    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
-        let rustup_name = self.rustup_name();
-
-        // Guard against destroying directories that this tool didn't create.
-        assert!(rustup_name.starts_with("bisector-nightly") ||
-                rustup_name.starts_with("bisector-ci"));
-
-        let dir = dl_params.install_dir.join(rustup_name);
-        fs::remove_dir_all(&dir)?;
-
-        Ok(())
-    }
-
-    fn test(&self, cfg: &Config) -> TestOutcome {
-        let outcome = if cfg.args.prompt {
-            loop {
-                let output = self.run_test(cfg);
-                let status = output.status;
-
-                eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
-                eprintln!("please select an action to take:");
-
-                let default_choice = match cfg.default_outcome_of_output(output) {
-                    TestOutcome::Regressed => 0,
-                    TestOutcome::Baseline => 1,
-                };
-
-                match Select::new()
-                    .items(&["mark regressed", "mark baseline", "retry"])
-                    .default(default_choice)
-                    .interact()
-                    .unwrap()
-                {
-                    0 => break TestOutcome::Regressed,
-                    1 => break TestOutcome::Baseline,
-                    2 => continue,
-                    _ => unreachable!(),
-                }
-            }
-        } else {
-            let output = self.run_test(cfg);
-            cfg.default_outcome_of_output(output)
-        };
-
-        outcome
     }
 }
 
@@ -657,188 +335,6 @@ impl OutputProcessingMode {
     }
 }
 
-impl Toolchain {
-    fn run_test(&self, cfg: &Config) -> process::Output {
-        if !cfg.args.preserve_target {
-            let _ = fs::remove_dir_all(
-                cfg.args
-                    .test_dir
-                    .join(&format!("target-{}", self.rustup_name())),
-            );
-        }
-        let mut cmd = match cfg.args.script {
-            Some(ref script) => {
-                let mut cmd = Command::new(script);
-                cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
-                cmd.args(&cfg.args.command_args);
-                cmd
-            }
-            None => {
-                let mut cmd = Command::new("cargo");
-                cmd.arg(&format!("+{}", self.rustup_name()));
-                if cfg.args.command_args.is_empty() {
-                    cmd.arg("build");
-                } else {
-                    cmd.args(&cfg.args.command_args);
-                }
-                cmd
-            }
-        };
-        cmd.current_dir(&cfg.args.test_dir);
-        cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
-
-        // let `cmd` capture stderr for us to process afterward.
-        let must_capture_output = cfg.output_processing_mode().must_process_stderr();
-        let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
-
-        let default_stdio = || if must_capture_output {
-            Stdio::piped()
-        } else if emit_output {
-            Stdio::inherit()
-        } else {
-            Stdio::null()
-        };
-
-        cmd.stdout(default_stdio());
-        cmd.stderr(default_stdio());
-
-        let output = match cmd.output() {
-            Ok(output) => output,
-            Err(err) => {
-                panic!("failed to run {:?}: {:?}", cmd, err);
-            }
-        };
-
-        // if we captured the stdout above but still need to emit it, then do so now
-        if must_capture_output && emit_output {
-            io::stdout().write_all(&output.stdout).unwrap();
-            io::stderr().write_all(&output.stderr).unwrap();
-        }
-        output
-    }
-
-    fn install(&self, client: &Client, dl_params: &DownloadParams) -> Result<(), InstallError> {
-        debug!("installing {}", self);
-        let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
-            .map_err(InstallError::TempDir)?;
-        let dest = dl_params.install_dir.join(self.rustup_name());
-        if dl_params.force_install {
-            let _ = self.do_remove(dl_params);
-        }
-
-        if dest.is_dir() {
-            // already installed
-            return Ok(());
-        }
-
-        if self.is_current_nightly() {
-            // make link to pre-existing installation
-            debug!("installing (via link) {}", self);
-
-            let nightly_path: String = {
-                let cmd = CommandTemplate::new(["rustc", "--print", "sysroot"]
-                                               .iter()
-                                               .map(|s| s.to_string()));
-                let stdout = cmd.output()?.stdout;
-                let output = String::from_utf8_lossy(&stdout);
-                // the output should be the path, terminated by a newline
-                let mut path = output.to_string();
-                let last = path.pop();
-                assert_eq!(last, Some('\n'));
-                path
-            };
-
-            let cmd = CommandTemplate::new(["rustup", "toolchain", "link"]
-                                           .iter()
-                                           .map(|s| s.to_string())
-                                           .chain(iter::once(self.rustup_name()))
-                                           .chain(iter::once(nightly_path)));
-            if cmd.status()?.success() {
-                return Ok(());
-            } else {
-                return Err(InstallError::Subcommand {
-                    command: cmd.string(),
-                    cause: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
-                });
-            }
-        }
-
-        debug!("installing via download {}", self);
-
-        let rustc_filename = format!("rustc-nightly-{}", self.host);
-
-        let location = match self.spec {
-            ToolchainSpec::Ci { ref commit, .. } => commit.to_string(),
-            ToolchainSpec::Nightly { ref date } => date.format(YYYY_MM_DD).to_string(),
-        };
-
-        // download rustc.
-        if let Err(e) = download_tarball(
-            &client,
-            &format!("rustc for {}", self.host),
-            &format!(
-                "{}/{}/{}.tar",
-                dl_params.url_prefix, location, rustc_filename
-            ),
-            Some(&PathBuf::from(&rustc_filename).join("rustc")),
-            tmpdir.path(),
-        ) {
-            match e {
-                DownloadError::NotFound(url) => {
-                    return Err(InstallError::NotFound {
-                        url: url,
-                        spec: self.spec.clone(),
-                    })
-                }
-                _ => return Err(InstallError::Download(e)),
-            }
-        }
-
-        // download libstd.
-        for target in &self.std_targets {
-            let rust_std_filename = format!("rust-std-nightly-{}", target);
-            download_tarball(
-                &client,
-                &format!("std for {}", target),
-                &format!(
-                    "{}/{}/{}.tar",
-                    dl_params.url_prefix, location, rust_std_filename
-                ),
-                Some(&PathBuf::from(&rust_std_filename)
-                    .join(format!("rust-std-{}", target))
-                    .join("lib")),
-                &tmpdir.path().join("lib"),
-            ).map_err(InstallError::Download)?;
-        }
-
-        if dl_params.install_cargo {
-            let filename = format!("cargo-nightly-{}", self.host);
-            download_tarball(
-                &client,
-                &format!("cargo for {}", self.host),
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join("cargo")),
-                tmpdir.path(),
-            ).map_err(InstallError::Download)?;
-        }
-
-        if dl_params.install_src {
-            let filename = "rust-src-nightly";
-            download_tarball(
-                &client,
-                "rust-src",
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join("rust-src")),
-                tmpdir.path(),
-            ).map_err(InstallError::Download)?;
-        }
-
-        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
-
-        Ok(())
-    }
-}
-
 // A simpler wrapper struct to make up for impoverished `Command` in libstd.
 struct CommandTemplate(Vec<String>);
 
@@ -848,7 +344,7 @@ impl CommandTemplate {
     }
 
     fn command(&self) -> Command {
-        assert!(self.0.len() > 0);
+        assert!(!self.0.is_empty());
         let mut cmd = Command::new(&self.0[0]);
         for arg in &self.0[1..] {
             cmd.arg(arg);
@@ -857,7 +353,7 @@ impl CommandTemplate {
     }
 
     fn string(&self) -> String {
-        assert!(self.0.len() > 0);
+        assert!(!self.0.is_empty());
         let mut s = self.0[0].to_string();
         for arg in &self.0[1..] {
             s.push_str(" ");
@@ -990,6 +486,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
     Ok(())
 }
 
+// Application entry point
 fn run() -> Result<(), Error> {
     env_logger::try_init()?;
     let args = env::args_os().filter(|a| a != "bisect-rustc");
@@ -1012,7 +509,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
             let sha = cfg.repo_access.commit(sha)?.sha;
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
-                    commit: sha.clone(),
+                    commit: sha,
                     alt: cfg.args.alt,
                 },
                 host: cfg.args.host.clone(),
@@ -1025,7 +522,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
         }
         Bound::Date(date) => {
             let mut t = Toolchain {
-                spec: ToolchainSpec::Nightly { date: date },
+                spec: ToolchainSpec::Nightly { date },
                 host: cfg.args.host.clone(),
                 std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
             };
@@ -1039,6 +536,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
     Ok(())
 }
 
+// bisection entry point
 fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     if cfg.is_commit {
         let bisection_result = bisect_ci(&cfg, &client)?;
@@ -1250,6 +748,52 @@ fn test_nightly_finder_iterator() {
     assert_eq!(start_date - chrono::Duration::days(78), iter.next().unwrap());
 }
 
+fn install_and_test(
+    t: &Toolchain,
+    cfg: &Config,
+    client: &Client,
+    dl_spec: &DownloadParams) -> Result<Satisfies, InstallError>
+{
+    match t.install(&client, &dl_spec) {
+        Ok(()) => {
+            let outcome = t.test(&cfg);
+            // we want to fail, so a successful build doesn't satisfy us
+            let r = match outcome {
+                TestOutcome::Baseline => Satisfies::No,
+                TestOutcome::Regressed => Satisfies::Yes,
+            };
+            eprintln!("RESULT: {}, ===> {}", t, r);
+            if !cfg.args.preserve {
+                let _ = t.remove(&dl_spec);
+            }
+            eprintln!();
+            Ok(r)
+        }
+        Err(error) => {
+            if !cfg.args.preserve {
+                let _ = t.remove(&dl_spec);
+            }
+            Err(error)
+        }
+    }
+}
+
+fn bisect_to_regression(
+    toolchains: &[Toolchain],
+    cfg: &Config,
+    client: &Client,
+    dl_spec: &DownloadParams) -> Result<usize, InstallError>
+{
+    let found = least_satisfying(&toolchains, |t| {
+        match install_and_test(&t, &cfg, &client, &dl_spec) {
+            Ok(r) => r,
+            Err(_) => Satisfies::Unknown,
+        }
+    });
+    Ok(found)
+}
+
+// nightlies branch of bisect execution
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
         bail!("cannot bisect nightlies with --alt: not supported");
@@ -1282,6 +826,12 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
 
     let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
+    // this loop tests nightly toolchains to:
+    // (1) validate that start date does not have regression (if defined on command line)
+    // (2) identify a nightly date range for the bisection routine
+    //
+    // The tests here must be constrained to dates after 2015-10-20 (`end_at` date)
+    // because -std packages were not available prior
     while nightly_date > end_at {
         let mut t = Toolchain {
             spec: ToolchainSpec::Nightly { date: nightly_date },
@@ -1293,48 +843,60 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         if t.is_current_nightly() {
             eprintln!("checking {} from the currently installed default nightly \
                        toolchain as the last failure", t);
-        } else {
-            eprintln!("checking {}", t);
         }
-        match t.install(client, &dl_spec) {
-            Ok(()) => {
-                let outcome = t.test(&cfg);
 
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
-
-                if let TestOutcome::Baseline = outcome {
+        match install_and_test(&t, &cfg, &client, &dl_spec) {
+            Ok(r) => {
+                // If Satisfies::No, then the regression was not identified in this nightly.
+                // Break out of the loop and use this as the start date for the
+                // bisection range
+                if let Satisfies::No = r {
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
-                    return Err(format_err!("the --start nightly has the regression"))?;
+                    // If this date was explicitly defined on the command line &
+                    // has regression, then this is an error in the test definition.
+                    // The user must re-define the start date and try again
+                    bail!("the start of the range ({}) must not reproduce the regression", t);
                 } else {
                     last_failure = nightly_date;
                 }
 
                 nightly_date = nightly_iter.next().unwrap();
-            }
+            },
             Err(InstallError::NotFound { .. }) => {
-                // go back just one day, presumably missing nightly
+                // go back just one day, presumably missing a nightly
                 nightly_date = nightly_date - chrono::Duration::days(1);
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
+                eprintln!("*** unable to install {}. roll back one day and try again...", t);
                 if has_start {
-                    return Err(format_err!("could not find the --start nightly"))?;
+                    bail!("could not find {}", t);
                 }
-            }
-            Err(e) => {
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
-                return Err(e)?;
-            }
+            },
+            Err(error) => return Err(error.into()),
         }
     }
 
     let first_success = first_success.ok_or(format_err!("could not find a nightly that built"))?;
+
+    // confirm that the end of the date range has the regression
+    let mut t_end = Toolchain {
+        spec: ToolchainSpec::Nightly { date: last_failure },
+        host: cfg.args.host.clone(),
+        std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
+    };
+    t_end.std_targets.sort();
+    t_end.std_targets.dedup();
+
+    match install_and_test(&t_end, &cfg, &client, &dl_spec) {
+        Ok(r) => {
+            // If Satisfies::No, then the regression was not identified in this nightly.
+            // this is an error, abort with error message
+            if r == Satisfies::No {
+                bail!("the end of the range ({}) does not reproduce the regression", t_end);
+            }
+        },
+        Err(error) => return Err(error.into()),
+    }
 
     let toolchains = toolchains_between(
         cfg,
@@ -1344,28 +906,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         ToolchainSpec::Nightly { date: last_failure },
     );
 
-    let found = least_satisfying(&toolchains, |t| {
-        match t.install(&client, &dl_spec) {
-            Ok(()) => {
-                let outcome = t.test(&cfg);
-                // we want to fail, so a successful build doesn't satisfy us
-                let r = match outcome {
-                    TestOutcome::Baseline => Satisfies::No,
-                    TestOutcome::Regressed => Satisfies::Yes,
-                };
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
-                eprintln!("tested {}, got {}", t, r);
-                r
-            }
-            Err(err) => {
-                let _ = t.remove(&dl_spec);
-                eprintln!("failed to install {}: {:?}", t, err);
-                Satisfies::Unknown
-            }
-        }
-    });
+    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec)?;
 
     Ok(BisectionResult {
         dl_spec,
@@ -1381,7 +922,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
             let mut date = a;
             while date <= b {
                 let mut t = Toolchain {
-                    spec: ToolchainSpec::Nightly { date: date },
+                    spec: ToolchainSpec::Nightly { date },
                     host: cfg.args.host.clone(),
                     std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
                 };
@@ -1396,6 +937,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
     }
 }
 
+// CI branch of bisect execution
 fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     eprintln!("bisecting ci builds");
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
@@ -1475,7 +1017,7 @@ fn bisect_ci_in_commits(
         .map(|commit| {
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
-                    commit: commit.sha.clone(),
+                    commit: commit.sha,
                     alt: cfg.args.alt,
                 },
                 host: cfg.args.host.clone(),
@@ -1487,31 +1029,33 @@ fn bisect_ci_in_commits(
         })
         .collect::<Vec<_>>();
 
-    eprintln!("testing commits");
-    let found = least_satisfying(&toolchains, |t| {
-        eprintln!("installing {}", t);
-        match t.install(&client, &dl_spec) {
-            Ok(()) => {
-                eprintln!("testing {}", t);
-                let outcome = t.test(&cfg);
-                // we want to fail, so a successful build doesn't satisfy us
-                let r = match outcome {
-                    TestOutcome::Regressed => Satisfies::Yes,
-                    TestOutcome::Baseline => Satisfies::No,
-                };
-                eprintln!("tested {}, got {}", t, r);
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
+    if !toolchains.is_empty() {
+        // validate commit at start of range
+        match install_and_test(&toolchains[0], &cfg, &client, &dl_spec) {
+            Ok(r) => {
+                // If Satisfies::Yes, then the commit at the beginning of the range
+                // has the regression, this is an error
+                if r == Satisfies::Yes {
+                    bail!("the commit at the start of the range ({}) includes the regression", &toolchains[0]);
                 }
-                r
-            }
-            Err(err) => {
-                let _ = t.remove(&dl_spec);
-                eprintln!("failed to install {}: {:?}", t, err);
-                Satisfies::Unknown
-            }
+            },
+            Err(error) => return Err(error.into()),
         }
-    });
+
+        // validate commit at end of range
+        match install_and_test(&toolchains[toolchains.len()-1], &cfg, &client, &dl_spec) {
+            Ok(r) => {
+                // If Satisfies::No, then the regression was not identified at the end of the
+                // commit range, this is an error
+                if r == Satisfies::No {
+                    bail!("the commit at the end of the range ({}) does not reproduce the regression", &toolchains[toolchains.len()-1]);
+                }
+            },
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec)?;
 
     Ok(BisectionResult {
         searched: toolchains,
@@ -1532,7 +1076,7 @@ fn main() {
         match err.downcast::<ExitError>() {
             Ok(ExitError(code)) => process::exit(code),
             Err(err) => {
-                eprintln!("{}", err);
+                eprintln!("ERROR: {}", err);
                 process::exit(1);
             }
         }
