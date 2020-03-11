@@ -107,23 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn least_satisfying_1f() {
-        assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes],|i| *i),
-            4
-        );
-    }
-
-    #[test]
     fn least_satisfying_2() {
-        assert_eq!(
-            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i| *i),
-            2
-        );
-    }
-
-    #[test]
-    fn least_satisfying_2f() {
         assert_eq!(
             least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i| *i),
             2
@@ -136,27 +120,12 @@ mod tests {
     }
 
     #[test]
-    fn least_satisfying_3f() {
-        assert_eq!(least_satisfying(&[No, No, No, No, Yes], |i| *i), 4);
-    }
-
-    #[test]
     fn least_satisfying_4() {
         assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i), 2);
     }
 
     #[test]
-    fn least_satisfying_4f() {
-        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i), 2);
-    }
-
-    #[test]
     fn least_satisfying_5() {
-        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i), 1);
-    }
-
-    #[test]
-    fn least_satisfying_5f() {
         assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i), 1);
     }
 
@@ -169,33 +138,12 @@ mod tests {
     }
 
     #[test]
-    fn least_satisfying_6f() {
-        assert_eq!(
-            least_satisfying(&[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes], |i| *i),
-            1
-        );
-    }
-
-    #[test]
     fn least_satisfying_7() {
         assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i| *i), 1);
     }
 
     #[test]
-    fn least_satisfying_7f() {
-        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i| *i), 1);
-    }
-
-    #[test]
     fn least_satisfying_8() {
-        assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes],|i| *i),
-            5
-        );
-    }
-
-    #[test]
-    fn least_satisfying_8f() {
         assert_eq!(
             least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes],|i| *i),
             5
