@@ -827,7 +827,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
     // this loop tests nightly toolchains to:
-    // (1) validate that start date does not have regression (if start date defined on CL)
+    // (1) validate that start date does not have regression (if defined on command line)
     // (2) identify a nightly date range for the bisection routine
     //
     // The tests here must be constrained to dates after 2015-10-20 (`end_at` date)
@@ -854,9 +854,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
-                    // If this date was explicitly defined on CL & has regression,
-                    // then this is an error in the test definition. The user must
-                    // re-define the start date and try again
+                    // If this date was explicitly defined on the command line &
+                    // has regression, then this is an error in the test definition.
+                    // The user must re-define the start date and try again
                     bail!("the start of the range ({}) must not reproduce the regression", t);
                 } else {
                     last_failure = nightly_date;
