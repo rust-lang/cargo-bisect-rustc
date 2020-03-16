@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0
+
+- Add support for GitHub API queries for Rust commit history
+- Add support for `--regress=non-ice` regression definition
+- Add support for `--script` arguments
+- Fix duplicated start date range pulls/checks
+- Reformat standard stream reporting
+
 ## v0.3.0
 
 - Transition to Rustlang edition 2018
