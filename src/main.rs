@@ -962,10 +962,11 @@ fn bisect_ci_via(
     client: &Client,
     access: &dyn RustRepositoryAccessor,
     start_sha: &str,
-    end_sha: &str)
+    end_ref: &str)
     -> Result<BisectionResult, Error>
 {
-    let commits = access.commits(start_sha, end_sha)?;
+    let end_sha = access.commit(end_ref)?.sha;
+    let commits = access.commits(start_sha, &end_sha)?;
 
     assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
 
