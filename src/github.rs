@@ -5,11 +5,22 @@ use serde::{Deserialize, Serialize};
 use crate::Commit;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct GithubCommitElem { commit: GithubCommit, sha: String }
+struct GithubCommitElem {
+    commit: GithubCommit,
+    sha: String,
+}
 #[derive(Serialize, Deserialize, Debug)]
-struct GithubCommit { author: GithubAuthor, committer: GithubAuthor, message: String, }
+struct GithubCommit {
+    author: GithubAuthor,
+    committer: GithubAuthor,
+    message: String,
+}
 #[derive(Serialize, Deserialize, Debug)]
-struct GithubAuthor { date: String, email: String, name: String }
+struct GithubAuthor {
+    date: String,
+    email: String,
+    name: String,
+}
 
 type GitDate = chrono::DateTime<chrono::Utc>;
 
@@ -43,9 +54,7 @@ fn headers() -> Result<reqwest::header::HeaderMap, Error> {
 
 pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
     let url = SingleCommitUrl { sha }.url();
-    let client = Client::builder()
-        .default_headers(headers()?)
-        .build()?;
+    let client = Client::builder().default_headers(headers()?).build()?;
     let response: Response = client.get(&url).send()?;
     let elem: GithubCommitElem = response.json()?;
     elem.git_commit()
@@ -71,26 +80,44 @@ const PER_PAGE: usize = 100;
 const OWNER: &'static str = "rust-lang";
 const REPO: &'static str = "rust";
 
-
-trait ToUrl { fn url(&self) -> String; }
-struct CommitsUrl<'a> { page: usize, author: &'a str, since: &'a str, sha: &'a str }
-struct SingleCommitUrl<'a> { sha: &'a str }
+trait ToUrl {
+    fn url(&self) -> String;
+}
+struct CommitsUrl<'a> {
+    page: usize,
+    author: &'a str,
+    since: &'a str,
+    sha: &'a str,
+}
+struct SingleCommitUrl<'a> {
+    sha: &'a str,
+}
 
 impl<'a> ToUrl for CommitsUrl<'a> {
     fn url(&self) -> String {
-        format!("https://api.github.com/repos/{OWNER}/{REPO}/commits\
+        format!(
+            "https://api.github.com/repos/{OWNER}/{REPO}/commits\
                  ?page={PAGE}&per_page={PER_PAGE}\
                  &author={AUTHOR}&since={SINCE}&sha={SHA}",
-                OWNER=OWNER, REPO=REPO,
-                PAGE=self.page, PER_PAGE=PER_PAGE,
-                AUTHOR=self.author, SINCE=self.since, SHA=self.sha)
+            OWNER = OWNER,
+            REPO = REPO,
+            PAGE = self.page,
+            PER_PAGE = PER_PAGE,
+            AUTHOR = self.author,
+            SINCE = self.since,
+            SHA = self.sha
+        )
     }
 }
 
 impl<'a> ToUrl for SingleCommitUrl<'a> {
     fn url(&self) -> String {
-        format!("https://api.github.com/repos/{OWNER}/{REPO}/commits/{REF}",
-                OWNER=OWNER, REPO=REPO, REF=self.sha)
+        format!(
+            "https://api.github.com/repos/{OWNER}/{REPO}/commits/{REF}",
+            OWNER = OWNER,
+            REPO = REPO,
+            REF = self.sha
+        )
     }
 }
 
@@ -102,11 +129,15 @@ fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
     // focus on Pull Request merges, all authored and committed by bors.
     let author = "bors";
 
-    let client = Client::builder()
-        .default_headers(headers()?)
-        .build()?;
+    let client = Client::builder().default_headers(headers()?).build()?;
     for page in 1.. {
-        let url = CommitsUrl { page, author, since: q.since_date, sha: q.most_recent_sha }.url();
+        let url = CommitsUrl {
+            page,
+            author,
+            since: q.since_date,
+            sha: q.most_recent_sha,
+        }
+        .url();
 
         let response: Response = client.get(&url).send()?;
 
@@ -121,35 +152,49 @@ fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
             commits.push(commit);
 
             if elem.sha == q.earliest_sha {
-                eprintln!("ending github query because we found starting sha: {}", elem.sha);
+                eprintln!(
+                    "ending github query because we found starting sha: {}",
+                    elem.sha
+                );
                 return Loop::Break;
             }
 
             Loop::Next
         })?;
 
-        if let Loop::Break = action { break; }
+        if let Loop::Break = action {
+            break;
+        }
     }
 
-    eprintln!("get_commits_between returning commits, len: {}", commits.len());
+    eprintln!(
+        "get_commits_between returning commits, len: {}",
+        commits.len()
+    );
 
     // reverse to obtain chronological order
     commits.reverse();
     Ok(commits)
 }
 
-enum Loop<E> { Break, Next, Err(E) }
-enum Void { }
+enum Loop<E> {
+    Break,
+    Next,
+    Err(E),
+}
+enum Void {}
 
-fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(response: Response,
-                                                           mut k: impl FnMut(Elem) -> Loop<Error>)
-                                                           -> Result<Loop<Void>, Error>
-{
+fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(
+    response: Response,
+    mut k: impl FnMut(Elem) -> Loop<Error>,
+) -> Result<Loop<Void>, Error> {
     // parse the JSON into an array of the expected Elem type
     let elems: Vec<Elem> = response.json()?;
 
     // if `elems` is empty, then we've run out of useful pages to lookup.
-    if elems.len() == 0 { return Ok(Loop::Break); }
+    if elems.len() == 0 {
+        return Ok(Loop::Break);
+    }
 
     for elem in elems.into_iter() {
         let act = k(elem);

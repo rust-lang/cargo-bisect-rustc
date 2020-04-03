@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn least_satisfying_1() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes],|i| *i),
+            least_satisfying(&[No, Unknown, Unknown, No, Yes], |i| *i),
             4
         );
     }
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn least_satisfying_8() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes],|i| *i),
+            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], |i| *i),
             5
         );
     }

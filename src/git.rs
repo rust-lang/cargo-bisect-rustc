@@ -47,7 +47,8 @@ fn get_repo() -> Result<Repository, Error> {
             let repo = Repository::open(path)?;
             {
                 eprintln!("refreshing repository");
-                let mut remote = repo.find_remote("origin")
+                let mut remote = repo
+                    .find_remote("origin")
                     .or_else(|_| repo.remote_anonymous("origin"))?;
                 remote.fetch(&["master"], None, None)?;
             }

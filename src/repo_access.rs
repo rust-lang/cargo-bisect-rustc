@@ -5,8 +5,9 @@ pub(crate) trait RustRepositoryAccessor {
     fn bound_to_date(&self, bound: Bound) -> Result<GitDate, Error> {
         match bound {
             Bound::Date(date) => Ok(date),
-            Bound::Commit(ref commit_ref) =>
-                self.commit(commit_ref).map(|commit| commit.date.date()),
+            Bound::Commit(ref commit_ref) => {
+                self.commit(commit_ref).map(|commit| commit.date.date())
+            }
         }
     }
 
@@ -21,10 +22,10 @@ pub(crate) trait RustRepositoryAccessor {
     fn commits(&self, start_sha: &str, end_sha: &str) -> Result<Vec<Commit>, Error>;
 }
 
-#[path="git.rs"]
+#[path = "git.rs"]
 mod git;
 
-#[path="github.rs"]
+#[path = "github.rs"]
 mod github;
 
 pub(crate) struct AccessViaLocalGit;
@@ -36,11 +37,16 @@ impl RustRepositoryAccessor for AccessViaLocalGit {
         self::git::get_commit(commit_ref)
     }
     fn commits(&self, start_sha: &str, end_sha: &str) -> Result<Vec<Commit>, Error> {
-        eprintln!("fetching (via local git) commits from {} to {}", start_sha, end_sha);
-        git::get_commits_between(start_sha, end_sha)
-            .map_err(|e| {
-                failure::format_err!("failed during attempt to create/access local git repository: {}", e)
-            })
+        eprintln!(
+            "fetching (via local git) commits from {} to {}",
+            start_sha, end_sha
+        );
+        git::get_commits_between(start_sha, end_sha).map_err(|e| {
+            failure::format_err!(
+                "failed during attempt to create/access local git repository: {}",
+                e
+            )
+        })
     }
 }
 
@@ -56,10 +62,13 @@ impl RustRepositoryAccessor for AccessViaGithub {
         // Because: the "since" parameter in the github API is an exclusive
         // bound. We need an inclusive bound, so we go yet another day prior for
         // this bound on the github search.
-        let since_date = self.bound_to_date(Bound::Commit(start_sha.to_string()))? - chrono::Duration::days(1);
+        let since_date =
+            self.bound_to_date(Bound::Commit(start_sha.to_string()))? - chrono::Duration::days(1);
 
-        eprintln!("fetching (via remote github) commits from max({}, {}) to {}",
-                  start_sha, since_date, end_sha);
+        eprintln!(
+            "fetching (via remote github) commits from max({}, {}) to {}",
+            start_sha, since_date, end_sha
+        );
 
         let query = github::CommitsQuery {
             since_date: &since_date.format(crate::YYYY_MM_DD).to_string(),
