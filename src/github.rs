@@ -115,7 +115,7 @@ impl<'a> ToUrl for SingleCommitUrl<'a> {
         // "origin/master" is set as `sha` when there is no `--end=` definition
         // specified on the command line.  We define the GitHub master branch
         // HEAD commit as the end commit in this case
-        if &self.sha == &"origin/master" {
+        if self.sha == "origin/master" {
             format!(
                 "https://api.github.com/repos/{OWNER}/{REPO}/commits/HEAD",
                 OWNER = OWNER,
