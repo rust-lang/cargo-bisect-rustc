@@ -117,7 +117,7 @@ impl<'a> ToUrl for SingleCommitUrl<'a> {
         // HEAD commit as the end commit in this case
         if self.sha == "origin/master" {
             format!(
-                "https://api.github.com/repos/{OWNER}/{REPO}/commits/HEAD",
+                "https://api.github.com/repos/{OWNER}/{REPO}/commits/master",
                 OWNER = OWNER,
                 REPO = REPO,
             )
