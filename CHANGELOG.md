@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1
+
+- Fix: bug on git commit retrieval from local rust git repository when `--end` commit is not specified
+- Fix: bug on git commit retrieval from GitHub API when `--end` commit is not specified
+- Updated dependencies
+- rustfmt source code
+
 ## v0.4.0
 
 - Add support for GitHub API queries for Rust commit history

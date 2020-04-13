@@ -112,12 +112,23 @@ impl<'a> ToUrl for CommitsUrl<'a> {
 
 impl<'a> ToUrl for SingleCommitUrl<'a> {
     fn url(&self) -> String {
-        format!(
-            "https://api.github.com/repos/{OWNER}/{REPO}/commits/{REF}",
-            OWNER = OWNER,
-            REPO = REPO,
-            REF = self.sha
-        )
+        // "origin/master" is set as `sha` when there is no `--end=` definition
+        // specified on the command line.  We define the GitHub master branch
+        // HEAD commit as the end commit in this case
+        if self.sha == "origin/master" {
+            format!(
+                "https://api.github.com/repos/{OWNER}/{REPO}/commits/master",
+                OWNER = OWNER,
+                REPO = REPO,
+            )
+        } else {
+            format!(
+                "https://api.github.com/repos/{OWNER}/{REPO}/commits/{REF}",
+                OWNER = OWNER,
+                REPO = REPO,
+                REF = self.sha
+            )
+        }
     }
 }
 
