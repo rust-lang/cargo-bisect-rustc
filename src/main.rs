@@ -239,39 +239,33 @@ impl Config {
             status, stdout_utf8, stderr_utf8
         );
 
-        let saw_ice = || -> bool { stderr_utf8.contains("error: internal compiler error") };
+        // for commit message:
+        // no text but 101 https://github.com/rust-lang/rust/issues/21599
+        // no text, signal https://github.com/rust-lang/rust/issues/13368
 
-        let input = (self.output_processing_mode(), status.success());
+        const SUCCESS: Option<i32> = Some(0);
+        const ICE: Option<i32> = Some(101);
+
+        let input = (self.output_processing_mode(), status.code());
         let result = match input {
-            (OutputProcessingMode::RegressOnErrorStatus, true) => TestOutcome::Baseline,
-            (OutputProcessingMode::RegressOnErrorStatus, false) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnErrorStatus, SUCCESS) => TestOutcome::Baseline,
+            (OutputProcessingMode::RegressOnErrorStatus, _) => TestOutcome::Regressed,
 
-            (OutputProcessingMode::RegressOnSuccessStatus, true) => TestOutcome::Regressed,
-            (OutputProcessingMode::RegressOnSuccessStatus, false) => TestOutcome::Baseline,
+            (OutputProcessingMode::RegressOnSuccessStatus, SUCCESS) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnSuccessStatus, _) => TestOutcome::Baseline,
 
-            (OutputProcessingMode::RegressOnIceAlone, _) => {
-                if saw_ice() {
-                    TestOutcome::Regressed
-                } else {
-                    TestOutcome::Baseline
-                }
-            }
-            (OutputProcessingMode::RegressOnNotIce, _) => {
-                if saw_ice() {
-                    TestOutcome::Baseline
-                } else {
-                    TestOutcome::Regressed
-                }
-            }
+            (OutputProcessingMode::RegressOnIceAlone, ICE) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnIceAlone, None) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnIceAlone, _) => TestOutcome::Baseline,
 
-            (OutputProcessingMode::RegressOnNonCleanError, true) => TestOutcome::Regressed,
-            (OutputProcessingMode::RegressOnNonCleanError, false) => {
-                if saw_ice() {
-                    TestOutcome::Regressed
-                } else {
-                    TestOutcome::Baseline
-                }
-            }
+            (OutputProcessingMode::RegressOnNotIce, ICE) => TestOutcome::Baseline,
+            (OutputProcessingMode::RegressOnNotIce, None) => TestOutcome::Baseline,
+            (OutputProcessingMode::RegressOnNotIce, _) => TestOutcome::Regressed,
+
+            (OutputProcessingMode::RegressOnNonCleanError, SUCCESS) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnNonCleanError, ICE) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnNonCleanError, None) => TestOutcome::Regressed,
+            (OutputProcessingMode::RegressOnNonCleanError, _) => TestOutcome::Baseline,
         };
         debug!(
             "default_outcome_of_output: input: {:?} result: {:?}",
@@ -316,27 +310,27 @@ enum OutputProcessingMode {
     RegressOnSuccessStatus,
 
     /// `RegressOnIceAlone`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process issues a diagnostic indicating that an internal
-    /// compiler error (ICE) occurred. This covers the use case for when you
-    /// want to bisect to see when an ICE was introduced pon a codebase that is
-    /// meant to produce a clean error.
+    /// the `rustc` process crashes or reports an interal compiler error (ICE)
+    /// has occurred. This covers the use case for when you want to bisect to
+    /// see when an ICE was introduced pon a codebase that is meant to produce a
+    /// clean error.
     ///
     /// You explicitly opt into this seting via `--regress=ice`.
     RegressOnIceAlone,
 
     /// `RegressOnNotIce`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process does not issue a diagnostic indicating that an
-    /// internal compiler error (ICE) occurred. This covers the use case for
-    /// when you want to bisect to see when an ICE was fixed.
+    /// the `rustc` process does not crash or report that an internal compiler
+    /// error (ICE) has occurred. This covers the use case for when you want to
+    /// bisect to see when an ICE was fixed.
     ///
     /// You explicitly opt into this setting via `--regress=non-ice`
     RegressOnNotIce,
 
     /// `RegressOnNonCleanError`: Marks test outcome as `Baseline` if and only
-    /// if the `rustc` process reports error status and does not issue any
-    /// diagnostic indicating that an internal compiler error (ICE) occurred.
-    /// This is the use case if the regression is a case where an ill-formed
-    /// program has stopped being properly rejected by the compiler.
+    /// if the `rustc` process reports error status that is not an internal
+    /// compiler error (ICE). This is the use case if the regression is a case
+    /// where an ill-formed program has stopped being properly rejected by the
+    /// compiler.
     ///
     /// (The main difference between this case and `RegressOnSuccessStatus` is
     /// the handling of ICE: `RegressOnSuccessStatus` assumes that ICE should be
@@ -351,11 +345,10 @@ impl OutputProcessingMode {
     fn must_process_stderr(&self) -> bool {
         match self {
             OutputProcessingMode::RegressOnErrorStatus
-            | OutputProcessingMode::RegressOnSuccessStatus => false,
-
-            OutputProcessingMode::RegressOnNonCleanError
+            | OutputProcessingMode::RegressOnSuccessStatus
+            | OutputProcessingMode::RegressOnNonCleanError
             | OutputProcessingMode::RegressOnIceAlone
-            | OutputProcessingMode::RegressOnNotIce => true,
+            | OutputProcessingMode::RegressOnNotIce => false,
         }
     }
 }
