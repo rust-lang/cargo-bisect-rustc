@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 
 use chrono::{Date, naive, Utc};
+use colored::*;
 use dialoguer::Select;
 use failure::{Fail, Error};
 use flate2::read::GzDecoder;
@@ -139,7 +140,8 @@ impl Toolchain {
         client: &Client,
         dl_params: &DownloadParams,
     ) -> Result<(), InstallError> {
-        eprintln!("installing {}", self);
+        let tc_stdstream_str = format!("{}", self);
+        eprintln!("installing {}", tc_stdstream_str.green());
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
