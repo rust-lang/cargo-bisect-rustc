@@ -15,6 +15,7 @@ use std::process::{self, Command};
 use std::str::FromStr;
 
 use chrono::{Date, DateTime, Duration, Utc};
+use colored::*;
 use failure::{bail, format_err, Fail, Error};
 use log::debug;
 use reqwest::blocking::Client;
@@ -634,7 +635,13 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
         }
     }
 
-    eprintln!("regression in {}", toolchains[*found]);
+    let tc_found = format!("Regression in {}", toolchains[*found]);
+    eprintln!("");
+    eprintln!("");
+    eprintln!("{}", "*".repeat(80).dimmed().bold());
+    eprintln!("{}", tc_found.red());
+    eprintln!("{}", "*".repeat(80).dimmed().bold());
+    eprintln!("");
 }
 
 fn print_final_report(
@@ -653,14 +660,16 @@ fn print_final_report(
         ..
     } = ci_bisection_result;
 
-    eprintln!("");
-    eprintln!("");
-
-    eprintln!("==================================================================================");
-    eprintln!("= Please open an issue on Rust's github repository                               =");
-    eprintln!("= https://github.com/rust-lang/rust/issues/new                                   =");
-    eprintln!("= Below you will find a text that would serve as a starting point of your report =");
-    eprintln!("==================================================================================");
+    #[rustfmt::skip]
+    eprintln!("{}", "==================================================================================".dimmed());
+    #[rustfmt::skip]
+    eprintln!("{}", "= Please open an issue on Rust's github repository                               =".dimmed());
+    #[rustfmt::skip]
+    eprintln!("{}", "= https://github.com/rust-lang/rust/issues/new                                   =".dimmed());
+    #[rustfmt::skip]
+    eprintln!("{}", "= Below you will find a text that would serve as a starting point of your report =".dimmed());
+    #[rustfmt::skip]
+    eprintln!("{}", "==================================================================================".dimmed());
 
     eprintln!("");
 
@@ -1071,6 +1080,7 @@ fn bisect_ci_in_commits(
     }
 
     eprintln!("validated commits found, specifying toolchains");
+    eprintln!("");
 
     let toolchains = commits
         .into_iter()
@@ -1142,7 +1152,8 @@ fn main() {
         match err.downcast::<ExitError>() {
             Ok(ExitError(code)) => process::exit(code),
             Err(err) => {
-                eprintln!("ERROR: {}", err);
+                let error_str = "ERROR:".red().bold();
+                eprintln!("{} {}", error_str, err);
                 process::exit(1);
             }
         }
