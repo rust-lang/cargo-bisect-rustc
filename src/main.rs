@@ -587,11 +587,38 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
                 bisect_ci_via(cfg, client, &*cfg.repo_access, &working_commit, &bad_commit)?;
 
             print_results(cfg, client, &ci_bisection_result);
-            print_final_report(&nightly_bisection_result, &ci_bisection_result);
+            print_final_report(cfg, &nightly_bisection_result, &ci_bisection_result);
         }
     }
 
     Ok(())
+}
+
+fn searched_range(
+    cfg: &Config,
+    searched_toolchains: &Vec<Toolchain>,
+) -> (ToolchainSpec, ToolchainSpec) {
+    let first_toolchain = searched_toolchains.first().unwrap().spec.clone();
+    let last_toolchain = searched_toolchains.last().unwrap().spec.clone();
+
+    match (&first_toolchain, &last_toolchain) {
+        (ToolchainSpec::Ci { .. }, ToolchainSpec::Ci { .. }) => (first_toolchain, last_toolchain),
+
+        _ => {
+            let start_toolchain = if let Some(Bound::Date(date)) = cfg.args.start {
+                ToolchainSpec::Nightly { date }
+            } else {
+                first_toolchain
+            };
+
+            (
+                start_toolchain,
+                ToolchainSpec::Nightly {
+                    date: get_end_date(cfg),
+                },
+            )
+        }
+    }
 }
 
 fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
@@ -601,11 +628,9 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
         found,
     } = bisection_result;
 
-    eprintln!(
-        "searched toolchains {} through {}",
-        toolchains.first().unwrap(),
-        toolchains.last().unwrap(),
-    );
+    let (start, end) = searched_range(cfg, toolchains);
+
+    eprintln!("searched toolchains {} through {}", start, end);
 
     if toolchains[*found] == *toolchains.last().unwrap() {
         let t = &toolchains[*found];
@@ -645,6 +670,7 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
 }
 
 fn print_final_report(
+    cfg: &Config,
     nightly_bisection_result: &BisectionResult,
     ci_bisection_result: &BisectionResult,
 ) {
@@ -676,11 +702,9 @@ fn print_final_report(
     eprintln!("# Regression found in the compiler");
     eprintln!("");
 
-    eprintln!(
-        "searched nightlies: from {} to {}",
-        nightly_toolchains.first().unwrap(),
-        nightly_toolchains.last().unwrap(),
-    );
+    let (start, end) = searched_range(cfg, nightly_toolchains);
+
+    eprintln!("searched nightlies: from {} to {}", start, end);
 
     eprintln!("regressed nightly: {}", nightly_toolchains[*nightly_found],);
 
