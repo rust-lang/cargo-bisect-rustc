@@ -843,6 +843,26 @@ fn bisect_to_regression(
     Ok(found)
 }
 
+fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
+    if let Some(Bound::Date(date)) = cfg.args.start {
+        date
+    } else {
+        get_end_date(cfg)
+    }
+}
+
+fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
+    if let Some(Bound::Date(date)) = cfg.args.end {
+        date
+    } else {
+        if let Some(date) = Toolchain::default_nightly() {
+            date
+        } else {
+            chrono::Utc::now().date()
+        }
+    }
+}
+
 // nightlies branch of bisect execution
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
@@ -858,21 +878,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     );
     let mut first_success = None;
 
-    let mut last_failure = if let Some(Bound::Date(date)) = cfg.args.end {
-        date
-    } else {
-        if let Some(date) = Toolchain::default_nightly() {
-            date
-        } else {
-            chrono::Utc::now().date()
-        }
-    };
-
-    let (mut nightly_date, has_start) = if let Some(Bound::Date(date)) = cfg.args.start {
-        (date, true)
-    } else {
-        (last_failure, false)
-    };
+    let mut nightly_date = get_start_date(cfg);
+    let mut last_failure = get_end_date(cfg);
+    let has_start = cfg.args.start.is_some();
 
     let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
