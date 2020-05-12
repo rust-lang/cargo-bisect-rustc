@@ -575,12 +575,12 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
             let previous_date = date - chrono::Duration::days(1);
 
-            let bad_commit = Bound::Date(date).sha()?;
             let working_commit = Bound::Date(previous_date).sha()?;
+            let bad_commit = Bound::Date(date).sha()?;
             eprintln!(
                 "looking for regression commit between {} and {}",
-                date.format(YYYY_MM_DD),
                 previous_date.format(YYYY_MM_DD),
+                date.format(YYYY_MM_DD),
             );
 
             let ci_bisection_result =
