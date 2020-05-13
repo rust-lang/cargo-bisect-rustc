@@ -689,17 +689,16 @@ fn print_final_report(
     #[rustfmt::skip]
     eprintln!("{}", "==================================================================================".dimmed());
     #[rustfmt::skip]
-    eprintln!("{}", "= Please open an issue on Rust's github repository                               =".dimmed());
+    eprintln!("{}", "= Please file this regression report on the rust-lang/rust GitHub repository     =".dimmed());
     #[rustfmt::skip]
-    eprintln!("{}", "= https://github.com/rust-lang/rust/issues/new                                   =".dimmed());
+    eprintln!("{}", "=        New issue: https://github.com/rust-lang/rust/issues/new                 =".dimmed());
     #[rustfmt::skip]
-    eprintln!("{}", "= Below you will find a text that would serve as a starting point of your report =".dimmed());
+    eprintln!("{}", "=     Known issues: https://github.com/rust-lang/rust/issues                     =".dimmed());
+    #[rustfmt::skip]
+    eprintln!("{}", "= Copy and paste the text below into the issue report thread.  Thanks!           =".dimmed());
     #[rustfmt::skip]
     eprintln!("{}", "==================================================================================".dimmed());
 
-    eprintln!("");
-
-    eprintln!("# Regression found in the compiler");
     eprintln!("");
 
     let (start, end) = searched_range(cfg, nightly_toolchains);
@@ -719,24 +718,30 @@ fn print_final_report(
         ci_toolchains[*ci_found],
     );
 
-    eprintln!("source code: URL OF A REPOSITORY THAT REPRODUCES THE ERROR");
+    eprintln!("");
+    eprintln!("<details>");
+    eprintln!(
+        "<summary>bisected with <a href='{}'>cargo-bisect-rustc</a> v{}</summary>",
+        env!("CARGO_PKG_REPOSITORY"),
+        env!("CARGO_PKG_VERSION"),
+    );
+    eprintln!("");
+    eprintln!("");
+    if let Some(host) = option_env!("HOST") {
+        eprintln!("Host triple: {}", host);
+    }
 
-    eprintln!("");
-
-    eprintln!("## Instructions");
-    eprintln!("");
-    eprintln!("Please give the steps for how to build your repository (platform, system dependencies, etc.)");
-
-    eprintln!("## Error");
-    eprintln!("");
-    eprintln!("<details><summary>COLLAPSIBLE ERROR STACKTRACE</summary>");
-    eprintln!("<p>");
-    eprintln!("");
+    eprintln!("Reproduce with:");
     eprintln!("```bash");
-    eprintln!("Paste the error the compiler is giving");
-    eprintln!("```");
+    eprint!("cargo bisect-rustc ");
+    for (index, arg) in env::args_os().enumerate() {
+        if index > 1 {
+            eprint!("{} ", arg.to_string_lossy());
+        }
+    }
     eprintln!("");
-    eprintln!("</p></details>");
+    eprintln!("```");
+    eprintln!("</details>");
 }
 
 struct NightlyFinderIter {
