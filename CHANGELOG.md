@@ -4,14 +4,13 @@
 
 - New: include compiler crashes in ICE regression definition
 - New: ANSI escape code colored standard stream output
-- New: More concise final report intended for copy/paste into rust-lang/rust issue tracker threads. This eliminates some of the Markdown elements that are not generally included in threads by users
 - New: Add bisect-rustc version to the final report
 - New: Add host triple to the final report
 - New: Add command line args to reproduce the reporter's bisect-rustc tests to final report
 - Fix: end date reporting when `--end` option used without `--start` option
 - Updated: Standard stream reporting format for improved readability during execution
 - Updated: Final report instructions for regression reporting
-- Updated: 
+- Updated: Eliminated Markdown elements in the final report that are not typically included in rust-lang/rust issues by reporting users
 
 ## v0.4.1
 
