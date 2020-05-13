@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.0
+
+- New: include compiler crashes in ICE regression definition
+- New: ANSI escape code colored standard stream output
+- New: Add bisect-rustc version to the final report
+- New: Add host triple to the final report
+- New: Add command line args to reproduce the reporter's bisect-rustc tests to final report
+- Fix: end date reporting when `--end` option used without `--start` option
+- Updated: Standard stream reporting format for improved readability during execution
+- Updated: Final report instructions for regression reporting
+- Updated: Eliminated Markdown elements in the final report that are not typically included in rust-lang/rust issues by reporting users
+
 ## v0.4.1
 
 - Fix: bug on git commit retrieval from local rust git repository when `--end` commit is not specified
