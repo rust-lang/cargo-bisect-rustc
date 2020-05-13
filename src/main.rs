@@ -689,11 +689,13 @@ fn print_final_report(
     #[rustfmt::skip]
     eprintln!("{}", "==================================================================================".dimmed());
     #[rustfmt::skip]
-    eprintln!("{}", "= Please open an issue on Rust's github repository                               =".dimmed());
+    eprintln!("{}", "= Please file this regression report on the rust-lang/rust GitHub repository     =".dimmed());
     #[rustfmt::skip]
-    eprintln!("{}", "= https://github.com/rust-lang/rust/issues/new                                   =".dimmed());
+    eprintln!("{}", "=        New issue: https://github.com/rust-lang/rust/issues/new                 =".dimmed());
     #[rustfmt::skip]
-    eprintln!("{}", "= Below you will find a text that would serve as a starting point of your report =".dimmed());
+    eprintln!("{}", "=     Known issues: https://github.com/rust-lang/rust/issues                     =".dimmed());
+    #[rustfmt::skip]
+    eprintln!("{}", "= Copy and paste the text below into the issue report thread.  Thanks!           =".dimmed());
     #[rustfmt::skip]
     eprintln!("{}", "==================================================================================".dimmed());
 
