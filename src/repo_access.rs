@@ -67,7 +67,9 @@ impl RustRepositoryAccessor for AccessViaGithub {
 
         eprintln!(
             "fetching (via remote github) commits from max({}, {}) to {}",
-            start_sha, since_date, end_sha
+            start_sha,
+            since_date.format(crate::YYYY_MM_DD),
+            end_sha
         );
 
         let query = github::CommitsQuery {

@@ -575,23 +575,50 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
             let previous_date = date - chrono::Duration::days(1);
 
-            let bad_commit = Bound::Date(date).sha()?;
             let working_commit = Bound::Date(previous_date).sha()?;
+            let bad_commit = Bound::Date(date).sha()?;
             eprintln!(
                 "looking for regression commit between {} and {}",
-                date.format(YYYY_MM_DD),
                 previous_date.format(YYYY_MM_DD),
+                date.format(YYYY_MM_DD),
             );
 
             let ci_bisection_result =
                 bisect_ci_via(cfg, client, &*cfg.repo_access, &working_commit, &bad_commit)?;
 
             print_results(cfg, client, &ci_bisection_result);
-            print_final_report(&nightly_bisection_result, &ci_bisection_result);
+            print_final_report(cfg, &nightly_bisection_result, &ci_bisection_result);
         }
     }
 
     Ok(())
+}
+
+fn searched_range(
+    cfg: &Config,
+    searched_toolchains: &Vec<Toolchain>,
+) -> (ToolchainSpec, ToolchainSpec) {
+    let first_toolchain = searched_toolchains.first().unwrap().spec.clone();
+    let last_toolchain = searched_toolchains.last().unwrap().spec.clone();
+
+    match (&first_toolchain, &last_toolchain) {
+        (ToolchainSpec::Ci { .. }, ToolchainSpec::Ci { .. }) => (first_toolchain, last_toolchain),
+
+        _ => {
+            let start_toolchain = if let Some(Bound::Date(date)) = cfg.args.start {
+                ToolchainSpec::Nightly { date }
+            } else {
+                first_toolchain
+            };
+
+            (
+                start_toolchain,
+                ToolchainSpec::Nightly {
+                    date: get_end_date(cfg),
+                },
+            )
+        }
+    }
 }
 
 fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
@@ -601,11 +628,9 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
         found,
     } = bisection_result;
 
-    eprintln!(
-        "searched toolchains {} through {}",
-        toolchains.first().unwrap(),
-        toolchains.last().unwrap(),
-    );
+    let (start, end) = searched_range(cfg, toolchains);
+
+    eprintln!("searched toolchains {} through {}", start, end);
 
     if toolchains[*found] == *toolchains.last().unwrap() {
         let t = &toolchains[*found];
@@ -645,6 +670,7 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
 }
 
 fn print_final_report(
+    cfg: &Config,
     nightly_bisection_result: &BisectionResult,
     ci_bisection_result: &BisectionResult,
 ) {
@@ -676,11 +702,9 @@ fn print_final_report(
     eprintln!("# Regression found in the compiler");
     eprintln!("");
 
-    eprintln!(
-        "searched nightlies: from {} to {}",
-        nightly_toolchains.first().unwrap(),
-        nightly_toolchains.last().unwrap(),
-    );
+    let (start, end) = searched_range(cfg, nightly_toolchains);
+
+    eprintln!("searched nightlies: from {} to {}", start, end);
 
     eprintln!("regressed nightly: {}", nightly_toolchains[*nightly_found],);
 
@@ -843,6 +867,26 @@ fn bisect_to_regression(
     Ok(found)
 }
 
+fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
+    if let Some(Bound::Date(date)) = cfg.args.start {
+        date
+    } else {
+        get_end_date(cfg)
+    }
+}
+
+fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
+    if let Some(Bound::Date(date)) = cfg.args.end {
+        date
+    } else {
+        if let Some(date) = Toolchain::default_nightly() {
+            date
+        } else {
+            chrono::Utc::now().date()
+        }
+    }
+}
+
 // nightlies branch of bisect execution
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
@@ -858,21 +902,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     );
     let mut first_success = None;
 
-    let mut last_failure = if let Some(Bound::Date(date)) = cfg.args.end {
-        date
-    } else {
-        if let Some(date) = Toolchain::default_nightly() {
-            date
-        } else {
-            chrono::Utc::now().date()
-        }
-    };
-
-    let (mut nightly_date, has_start) = if let Some(Bound::Date(date)) = cfg.args.start {
-        (date, true)
-    } else {
-        (last_failure, false)
-    };
+    let mut nightly_date = get_start_date(cfg);
+    let mut last_failure = get_end_date(cfg);
+    let has_start = cfg.args.start.is_some();
 
     let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 

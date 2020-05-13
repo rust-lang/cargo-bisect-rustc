@@ -69,17 +69,7 @@ pub(crate) struct Toolchain {
 
 impl fmt::Display for Toolchain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.spec {
-            ToolchainSpec::Ci { ref commit, alt } => {
-                let alt_s = if alt {
-                    "-alt".to_string()
-                } else {
-                    String::new()
-                };
-                write!(f, "{}{}", commit, alt_s)
-            }
-            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format(YYYY_MM_DD)),
-        }
+        write!(f, "{}", self.spec)
     }
 }
 
@@ -407,7 +397,7 @@ impl fmt::Display for ToolchainSpec {
                 };
                 write!(f, "{}{}", commit, alt_s)
             }
-            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date),
+            ToolchainSpec::Nightly { ref date } => write!(f, "nightly-{}", date.format(YYYY_MM_DD)),
         }
     }
 }
