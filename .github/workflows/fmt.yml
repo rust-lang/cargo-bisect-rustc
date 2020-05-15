@@ -1,0 +1,16 @@
+on: [push, pull_request]
+
+name: Rust fmt check
+
+jobs:
+  check:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+      - uses: actions/checkout@v2
+      - name: Run rustfmt
+        run: |
+          rustup component add rustfmt
+          cargo fmt --version
+          cargo fmt -- --check || (echo "Please reformat your code with 'cargo fmt' (version $(cargo fmt --version))"; false)
