@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.1
+
+- Fix: Windows build fails due to dependency of `console` dependency issue.  Updated `winapi-util` package to v0.1.5 (from 0.1.2)
+
 ## v0.5.0
 
 - New: include compiler crashes in ICE regression definition
