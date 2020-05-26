@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.2
+
+- Fix: revert the revised internal compiler error definition in commit a3891cdd26d1c5d35257c351c7c86fa7e72604bb
+
 ## v0.5.1
 
 - Fix: Windows build fails due to dependency of `console` dependency issue.  Updated `winapi-util` package to v0.1.5 (from 0.1.2)

@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-bisect-rustc"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "chrono 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "colored 1.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
