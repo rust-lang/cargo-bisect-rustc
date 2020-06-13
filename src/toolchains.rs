@@ -231,17 +231,20 @@ impl Toolchain {
             .map_err(InstallError::Download)?;
         }
 
-        if dl_params.install_cargo {
-            let filename = format!("cargo-nightly-{}", self.host);
-            download_tarball(
-                &client,
-                &format!("cargo for {}", self.host),
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join("cargo")),
-                tmpdir.path(),
-            )
-            .map_err(InstallError::Download)?;
-        }
+        // download nightly cargo by default
+        // this behavior was changed from an
+        // optional feature with the `--with-cargo`
+        // flag as of v0.6.0
+        // see: https://github.com/rust-lang/cargo-bisect-rustc/issues/81
+        let filename = format!("cargo-nightly-{}", self.host);
+        download_tarball(
+            &client,
+            &format!("cargo for {}", self.host),
+            &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
+            Some(&PathBuf::from(&filename).join("cargo")),
+            tmpdir.path(),
+        )
+        .map_err(InstallError::Download)?;
 
         if dl_params.install_src {
             let filename = "rust-src-nightly";
@@ -407,7 +410,6 @@ pub(crate) struct DownloadParams {
     url_prefix: String,
     tmp_dir: PathBuf,
     install_dir: PathBuf,
-    install_cargo: bool,
     install_src: bool,
     force_install: bool,
 }
@@ -432,7 +434,6 @@ impl DownloadParams {
             url_prefix,
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
-            install_cargo: cfg.args.with_cargo,
             install_src: cfg.args.with_src,
             force_install: cfg.args.force_install,
         }

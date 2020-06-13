@@ -93,12 +93,6 @@ struct Opts {
     )]
     preserve_target: bool,
 
-    #[structopt(
-        long = "with-cargo",
-        help = "Download cargo [default: installed cargo]"
-    )]
-    with_cargo: bool,
-
     #[structopt(long = "with-src", help = "Download rust-src [default: no download]")]
     with_src: bool,
 
