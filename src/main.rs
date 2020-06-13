@@ -505,12 +505,31 @@ impl Config {
 }
 
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
+    // current UTC date
+    let current = Utc::now().date();
     match (&start, &end) {
+        // start date is after end date
         (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
             bail!(
-                "end should be after start, got start: {:?} and end {:?}",
+                "end should be after start, got start: {} and end {}",
                 start,
                 end
+            );
+        }
+        // start date is after current date
+        (Some(Bound::Date(start)), Some(Bound::Date(_end))) if start > &current => {
+            bail!(
+                "start date should be on or before current date, got start date request: {} and current date is {}",
+                start,
+                current
+            );
+        }
+        // end date is after current date
+        (Some(Bound::Date(_start)), Some(Bound::Date(end))) if end > &current => {
+            bail!(
+                "end date should be on or before current date, got start date request: {} and current date is {}",
+                end,
+                current
             );
         }
         _ => {}
@@ -899,6 +918,11 @@ fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
     }
 }
 
+fn date_is_future(test_date: chrono::Date<Utc>) -> bool {
+    let current_date = chrono::Utc::now().date();
+    test_date > current_date
+}
+
 // nightlies branch of bisect execution
 fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
     if cfg.args.alt {
@@ -917,6 +941,22 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let mut nightly_date = get_start_date(cfg);
     let mut last_failure = get_end_date(cfg);
     let has_start = cfg.args.start.is_some();
+
+    // validate start and end dates to confirm that they are not future dates
+    // start date validation
+    if has_start && date_is_future(nightly_date) {
+        bail!(
+            "start date must be on or before the current date. received start date request {}",
+            nightly_date
+        )
+    }
+    // end date validation
+    if date_is_future(last_failure) {
+        bail!(
+            "end date must be on or before the current date. received end date request {}",
+            nightly_date
+        )
+    }
 
     let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
@@ -1201,5 +1241,39 @@ fn main() {
                 process::exit(1);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Start and end date validations
+    #[test]
+    fn test_check_bounds_valid_bounds() {
+        let date1 = chrono::Utc::now().date().pred();
+        let date2 = chrono::Utc::now().date().pred();
+        assert!(check_bounds(&Some(Bound::Date(date1)), &Some(Bound::Date(date2))).is_ok());
+    }
+
+    #[test]
+    fn test_check_bounds_invalid_start_after_end() {
+        let start = chrono::Utc::now().date();
+        let end = chrono::Utc::now().date().pred();
+        assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
+    }
+
+    #[test]
+    fn test_check_bounds_invalid_start_after_current() {
+        let start = chrono::Utc::now().date().succ();
+        let end = chrono::Utc::now().date();
+        assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
+    }
+
+    #[test]
+    fn test_check_bounds_invalid_end_after_current() {
+        let start = chrono::Utc::now().date();
+        let end = chrono::Utc::now().date().succ();
+        assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 }
