@@ -93,12 +93,6 @@ struct Opts {
     )]
     preserve_target: bool,
 
-    #[structopt(
-        long = "with-cargo",
-        help = "Download cargo [default: installed cargo]"
-    )]
-    with_cargo: bool,
-
     #[structopt(long = "with-src", help = "Download rust-src [default: no download]")]
     with_src: bool,
 
@@ -157,6 +151,12 @@ struct Opts {
         parse(from_os_str)
     )]
     script: Option<PathBuf>,
+
+    #[structopt(
+        long = "without-cargo",
+        help = "Do not install cargo [default: install cargo]"
+    )]
+    without_cargo: bool,
 }
 
 pub type GitDate = Date<Utc>;
