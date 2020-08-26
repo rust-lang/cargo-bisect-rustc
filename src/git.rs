@@ -83,7 +83,7 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<
     let assert_by_bors = |c: &Git2Commit<'_>| -> Result<(), Error> {
         match c.author().name() {
             Some("bors") => Ok(()),
-            Some(author) => bail!("Expected author {} to be bors for {}", author, c.id()),
+            Some(author) => bail!("Expected author {} to be bors for {}.\n Make sure specified commits are on the master branch!", author, c.id()),
             None => bail!("No author for {}", c.id()),
         }
     };
