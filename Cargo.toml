@@ -13,7 +13,7 @@ edition = "2018"
 
 [dependencies]
 dialoguer = "0.6.2"
-dirs = "2.0"
+home = "0.5"
 env_logger = "0.7.1"
 failure = "0.1"
 flate2 = "1.0.14"

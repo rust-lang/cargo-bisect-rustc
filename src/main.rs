@@ -431,15 +431,7 @@ impl Config {
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
         let mut args = args;
 
-        let mut toolchains_path = match env::var_os("RUSTUP_HOME") {
-            Some(h) => PathBuf::from(h),
-            None => {
-                let mut home =
-                    dirs::home_dir().ok_or_else(|| format_err!("Could not find home."))?;
-                home.push(".rustup");
-                home
-            }
-        };
+        let mut toolchains_path = home::rustup_home()?;
 
         // We will download and extract the tarballs into this directory before installing.
         // Using `~/.rustup/tmp` instead of $TMPDIR ensures we could always perform installation by
