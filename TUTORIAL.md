@@ -5,7 +5,15 @@ behavior has regressed in rustc. It automatically downloads rustc
 artifacts and tests them against a project you provide until it finds
 the regression.
 
-To install the tool run:
+## Installation
+
+If you're going to bisect for linux-musl host, install musl toolchain and run:
+
+```sh
+cargo install cargo-bisect-rustc --feature git2/vendored-openssl
+```
+
+Otherwise, run:
 
 ```sh
 cargo install cargo-bisect-rustc
