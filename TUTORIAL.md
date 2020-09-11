@@ -25,10 +25,13 @@ or (to avoid cloning rustc)
 RUST_SRC_REPO=/path/to/rust cargo install cargo-bisect-rustc
 ```
 
-The `RUST_SRC_REPO` should be a path to a git clone of the rust repo. If you
-don't specify it, it will look in the current directory for `rust.git` or
-check it out automatically if it's not there (only necessary if doing git hash
-bisections).
+The `RUST_SRC_REPO` should be a path to a git clone of the rust repo.
+The current order how `cargo-bisect-rustc` finds Rust repository path is:
+* `RUST_SRC_REPO` at runtime.
+* `rust.git` in current dir at runtime.
+* `RUST_SRC_REPO` that was set at compilation time.
+* Clone https://github.com/rust-lang/rust automatically
+  (only necessary if doing git hash bisections).
 
 First, if you have a nightly version of the compiler already installed
 as the default toolchain and you don't pass an end flag, the tool is
@@ -47,11 +50,6 @@ regression and report everything back to the user.
 So, there's a bunch of ways to run the tool, the easiest one is to
 allow the tool to do the job and just run `cargo bisect-rustc` on the
 project and let the tool figure things out.
-
-Note: you can also pass `RUST_SRC_REPO` env var, should be a path to a
-git clone of the rust repo. If you don't specify it, it will look in the
-current directory for `rust.git` or check it out automatically if it's
-not there (only necessary if doing git hash bisections).
 
 ## Finding a regression
 
@@ -142,7 +140,7 @@ d75458200516f06455d175adc001fd993d674050 bors Sat Jul 28 16:44:21 2018 +0000
 ```
 
 and we can, for example, pick the last commit on the day before the nightly,
-`6323d9a45bdf0ac2a9319a6a558537e0a7e6abd1`, as the start of the range, and the 
+`6323d9a45bdf0ac2a9319a6a558537e0a7e6abd1`, as the start of the range, and the
 last commit on the day of the nightly, `866a713258915e6cbb212d135f751a6a8c9e1c0a`,
 as the end of the range.
 
