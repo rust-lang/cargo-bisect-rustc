@@ -3,6 +3,7 @@
 const RUST_SRC_URL: &str = "https://github.com/rust-lang/rust";
 const RUST_SRC_REPO: Option<&str> = option_env!("RUST_SRC_REPO");
 
+use std::env;
 use std::path::Path;
 
 use chrono::{TimeZone, Utc};
@@ -32,26 +33,27 @@ fn lookup_rev<'rev>(repo: &'rev Repository, rev: &str) -> Result<Git2Commit<'rev
 }
 
 fn get_repo() -> Result<Repository, Error> {
-    let loc = Path::new("rust.git");
-    match (RUST_SRC_REPO, loc.exists()) {
-        (Some(_), _) | (_, true) => {
-            let path = RUST_SRC_REPO.map(Path::new).unwrap_or(loc);
-            eprintln!("opening existing repository at {:?}", path);
-            let repo = Repository::open(path)?;
-            {
-                eprintln!("refreshing repository");
-                let mut remote = repo
-                    .find_remote("origin")
-                    .or_else(|_| repo.remote_anonymous("origin"))?;
-                remote.fetch(&["master"], None, None)?;
-            }
-            Ok(repo)
+    fn open(repo: &Path) -> Result<Repository, Error> {
+        eprintln!("opening existing repository at {:?}", repo);
+        let repo = Repository::open(repo)?;
+        {
+            eprintln!("refreshing repository");
+            let mut remote = repo
+                .find_remote("origin")
+                .or_else(|_| repo.remote_anonymous("origin"))?;
+            remote.fetch(&["master"], None, None)?;
         }
-        (None, false) => {
+        Ok(repo)
+    }
+
+    let loc = Path::new("rust.git");
+    match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
+        (Some(repo), _) => open(Path::new(&repo)),
+        (None, _) if loc.exists() => open(loc),
+        (None, Some(repo)) => open(Path::new(repo)),
+        _ => {
             eprintln!("cloning rust repository");
-            Ok(RepoBuilder::new()
-                .bare(true)
-                .clone(RUST_SRC_URL, Path::new("rust.git"))?)
+            Ok(RepoBuilder::new().bare(true).clone(RUST_SRC_URL, loc)?)
         }
     }
 }
