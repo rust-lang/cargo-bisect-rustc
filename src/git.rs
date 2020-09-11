@@ -38,9 +38,7 @@ fn get_repo() -> Result<Repository, Error> {
         let repo = Repository::open(repo)?;
         {
             eprintln!("refreshing repository");
-            let mut remote = repo
-                .find_remote("origin")
-                .or_else(|_| repo.remote_anonymous("origin"))?;
+            let mut remote = repo.remote_anonymous(RUST_SRC_URL)?;
             remote.fetch(&["master"], None, None)?;
         }
         Ok(repo)
