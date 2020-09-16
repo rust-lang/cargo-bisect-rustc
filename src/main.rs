@@ -442,6 +442,13 @@ impl Config {
             );
         }
 
+        if !args.test_dir.is_dir() {
+            bail!(
+                "`{}` is not a directory. Please make sure --test-dir is correct",
+                args.test_dir.display()
+            );
+        }
+
         let is_commit = match (args.start.clone(), args.end.clone()) {
             (Some(Bound::Commit(_)), Some(Bound::Commit(_)))
             | (None, Some(Bound::Commit(_)))
