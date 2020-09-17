@@ -37,6 +37,11 @@ impl RustRepositoryAccessor for AccessViaLocalGit {
         self::git::get_commit(commit_ref)
     }
     fn commits(&self, start_sha: &str, end_sha: &str) -> Result<Vec<Commit>, Error> {
+        let end_sha = if end_sha == "origin/master" {
+            "FETCH_HEAD"
+        } else {
+            end_sha
+        };
         eprintln!(
             "fetching (via local git) commits from {} to {}",
             start_sha, end_sha
