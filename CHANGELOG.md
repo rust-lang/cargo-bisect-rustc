@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.6.0
+
+### Added
+
+- Support specifying the path to a rust-lang/rust clone at runtime with `RUST_SRC_REPO`
+
+### Changed
+
+- Make `--with-cargo` the default to allow bisecting past changes in rustc options. Add `--without-cargo` flag to use the old behavior.
+- Use an anonymous remote that always points to rust-lang/rust when refreshing repository
+
+### Fixed
+
+- Add nightly start and end date validations against the current date – previously would attempt to install nightly even if date was in the future
+- Verify that `--test-dir` is a directory instead of assuming it is and then panicking
+
 ## v0.5.2
 
 - Fix: revert the revised internal compiler error definition in commit a3891cdd26d1c5d35257c351c7c86fa7e72604bb
