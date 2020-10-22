@@ -1056,16 +1056,19 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
 fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<Toolchain> {
     match (a, b) {
         (ToolchainSpec::Nightly { date: a }, ToolchainSpec::Nightly { date: b }) => {
-            let mut toolchains = Vec::new();
+            let size = (b - a).num_days() + 1;
+            assert!(size > 0);
+            let mut toolchains = Vec::with_capacity(size as usize);
             let mut date = a;
+            let mut std_targets = vec![cfg.args.host.clone(), cfg.target.clone()];
+            std_targets.sort();
+            std_targets.dedup();
             while date <= b {
-                let mut t = Toolchain {
+                let t = Toolchain {
                     spec: ToolchainSpec::Nightly { date },
                     host: cfg.args.host.clone(),
-                    std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
+                    std_targets: std_targets.clone(),
                 };
-                t.std_targets.sort();
-                t.std_targets.dedup();
                 toolchains.push(t);
                 date = date.succ();
             }
