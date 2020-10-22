@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::{self, Command};
 use std::str::FromStr;
 
-use chrono::{Date, DateTime, Duration, Utc};
+use chrono::{Date, DateTime, Utc};
 use colored::*;
 use failure::{bail, format_err, Fail, Error};
 use log::debug;
@@ -591,7 +591,7 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
         let nightly_regression = &nightly_bisection_result.searched[nightly_bisection_result.found];
 
         if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
-            let previous_date = date - chrono::Duration::days(1);
+            let previous_date = date.pred();
 
             let working_commit = Bound::Date(previous_date).sha()?;
             let bad_commit = Bound::Date(date).sha()?;
@@ -998,7 +998,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
             }
             Err(InstallError::NotFound { .. }) => {
                 // go back just one day, presumably missing a nightly
-                nightly_date = nightly_date - chrono::Duration::days(1);
+                nightly_date = nightly_date.pred();
                 eprintln!(
                     "*** unable to install {}. roll back one day and try again...",
                     t
@@ -1067,7 +1067,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
                 t.std_targets.sort();
                 t.std_targets.dedup();
                 toolchains.push(t);
-                date = date + Duration::days(1);
+                date = date.succ();
             }
             toolchains
         }

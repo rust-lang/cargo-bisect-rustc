@@ -67,8 +67,9 @@ impl RustRepositoryAccessor for AccessViaGithub {
         // Because: the "since" parameter in the github API is an exclusive
         // bound. We need an inclusive bound, so we go yet another day prior for
         // this bound on the github search.
-        let since_date =
-            self.bound_to_date(Bound::Commit(start_sha.to_string()))? - chrono::Duration::days(1);
+        let since_date = self
+            .bound_to_date(Bound::Commit(start_sha.to_string()))?
+            .pred();
 
         eprintln!(
             "fetching (via remote github) commits from max({}, {}) to {}",
