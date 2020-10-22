@@ -11,6 +11,7 @@ use dialoguer::Select;
 use failure::{Fail, Error};
 use flate2::read::GzDecoder;
 use log::debug;
+use once_cell::sync::OnceCell;
 use pbr::{ProgressBar, Units};
 use regex::Regex;
 use reqwest::blocking::{Client, Response};
@@ -88,25 +89,30 @@ impl Toolchain {
     /// This returns the date of the default toolchain, if it is a nightly toolchain.
     /// Returns `None` if the installed toolchain is not a nightly toolchain.
     pub(crate) fn default_nightly() -> Option<GitDate> {
-        let version_meta = rustc_version::version_meta().unwrap();
+        fn inner() -> Option<GitDate> {
+            let version_meta = rustc_version::version_meta().unwrap();
 
-        if let Channel::Nightly = version_meta.channel {
-            if let Some(str_date) = version_meta.commit_date {
-                let regex = Regex::new(r"(?m)^(\d{4})-(\d{2})-(\d{2})$").unwrap();
-                if let Some(cap) = regex.captures(&str_date) {
-                    let year = cap.get(1)?.as_str().parse::<i32>().ok()?;
-                    let month = cap.get(2)?.as_str().parse::<u32>().ok()?;
-                    let day = cap.get(3)?.as_str().parse::<u32>().ok()?;
+            if let Channel::Nightly = version_meta.channel {
+                if let Some(str_date) = version_meta.commit_date {
+                    let regex = Regex::new(r"(?m)^(\d{4})-(\d{2})-(\d{2})$").unwrap();
+                    if let Some(cap) = regex.captures(&str_date) {
+                        let year = cap.get(1)?.as_str().parse::<i32>().ok()?;
+                        let month = cap.get(2)?.as_str().parse::<u32>().ok()?;
+                        let day = cap.get(3)?.as_str().parse::<u32>().ok()?;
 
-                    return Some(Date::from_utc(
-                        naive::NaiveDate::from_ymd(year, month, day),
-                        Utc,
-                    ));
+                        return Some(Date::from_utc(
+                            naive::NaiveDate::from_ymd(year, month, day),
+                            Utc,
+                        ));
+                    }
                 }
             }
+
+            None
         }
 
-        None
+        static DATE: OnceCell<Option<GitDate>> = OnceCell::new();
+        *(DATE.get_or_init(|| inner()))
     }
 
     pub(crate) fn is_current_nightly(&self) -> bool {
