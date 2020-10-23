@@ -100,10 +100,10 @@ impl Toolchain {
                         let month = cap.get(2)?.as_str().parse::<u32>().ok()?;
                         let day = cap.get(3)?.as_str().parse::<u32>().ok()?;
 
-                        return Some(Date::from_utc(
-                            naive::NaiveDate::from_ymd(year, month, day),
-                            Utc,
-                        ));
+                        // rustc commit date is off-by-one.
+                        let date = naive::NaiveDate::from_ymd(year, month, day).succ();
+
+                        return Some(Date::from_utc(date, Utc));
                     }
                 }
             }
