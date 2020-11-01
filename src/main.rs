@@ -38,6 +38,14 @@ pub struct Commit {
 /// however, it does limit the amount of commits somewhat.
 const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
 
+const REPORT_HEADER: &str = "\
+==================================================================================
+= Please file this regression report on the rust-lang/rust GitHub repository     =
+=        New issue: https://github.com/rust-lang/rust/issues/new                 =
+=     Known issues: https://github.com/rust-lang/rust/issues                     =
+= Copy and paste the text below into the issue report thread.  Thanks!           =
+==================================================================================";
+
 #[derive(Debug, StructOpt)]
 #[structopt(after_help = "EXAMPLES:
     Run a fully automatic nightly bisect doing `cargo check`:
@@ -679,12 +687,12 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
     }
 
     let tc_found = format!("Regression in {}", toolchains[*found]);
-    eprintln!("");
-    eprintln!("");
+    eprintln!();
+    eprintln!();
     eprintln!("{}", "*".repeat(80).dimmed().bold());
     eprintln!("{}", tc_found.red());
     eprintln!("{}", "*".repeat(80).dimmed().bold());
-    eprintln!("");
+    eprintln!();
 }
 
 fn print_final_report(
@@ -704,20 +712,8 @@ fn print_final_report(
         ..
     } = ci_bisection_result;
 
-    #[rustfmt::skip]
-    eprintln!("{}", "==================================================================================".dimmed());
-    #[rustfmt::skip]
-    eprintln!("{}", "= Please file this regression report on the rust-lang/rust GitHub repository     =".dimmed());
-    #[rustfmt::skip]
-    eprintln!("{}", "=        New issue: https://github.com/rust-lang/rust/issues/new                 =".dimmed());
-    #[rustfmt::skip]
-    eprintln!("{}", "=     Known issues: https://github.com/rust-lang/rust/issues                     =".dimmed());
-    #[rustfmt::skip]
-    eprintln!("{}", "= Copy and paste the text below into the issue report thread.  Thanks!           =".dimmed());
-    #[rustfmt::skip]
-    eprintln!("{}", "==================================================================================".dimmed());
-
-    eprintln!("");
+    eprintln!("{}", REPORT_HEADER.dimmed());
+    eprintln!();
 
     let (start, end) = searched_range(cfg, nightly_toolchains);
 
@@ -726,7 +722,7 @@ fn print_final_report(
     eprintln!("regressed nightly: {}", nightly_toolchains[*nightly_found],);
 
     eprintln!(
-        "searched commits: from https://github.com/rust-lang/rust/commit/{} to https://github.com/rust-lang/rust/commit/{1}",
+        "searched commits: from https://github.com/rust-lang/rust/commit/{0} to https://github.com/rust-lang/rust/commit/{1}",
         ci_toolchains.first().unwrap(),
         ci_toolchains.last().unwrap(),
     );
@@ -736,15 +732,15 @@ fn print_final_report(
         ci_toolchains[*ci_found],
     );
 
-    eprintln!("");
+    eprintln!();
     eprintln!("<details>");
     eprintln!(
         "<summary>bisected with <a href='{}'>cargo-bisect-rustc</a> v{}</summary>",
         env!("CARGO_PKG_REPOSITORY"),
         env!("CARGO_PKG_VERSION"),
     );
-    eprintln!("");
-    eprintln!("");
+    eprintln!();
+    eprintln!();
     if let Some(host) = option_env!("HOST") {
         eprintln!("Host triple: {}", host);
     }
@@ -757,7 +753,7 @@ fn print_final_report(
             eprint!("{} ", arg.to_string_lossy());
         }
     }
-    eprintln!("");
+    eprintln!();
     eprintln!("```");
     eprintln!("</details>");
 }
@@ -1159,7 +1155,7 @@ fn bisect_ci_in_commits(
     }
 
     eprintln!("validated commits found, specifying toolchains");
-    eprintln!("");
+    eprintln!();
 
     let toolchains = commits
         .into_iter()
