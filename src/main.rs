@@ -1146,7 +1146,7 @@ fn bisect_ci_in_commits(
 
     if commits.is_empty() {
         bail!(
-            "no commits between {} and {} within last 167 days",
+            "no CI builds available between {} and {} within last 167 days",
             start,
             end
         );
