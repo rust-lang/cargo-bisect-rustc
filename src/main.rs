@@ -89,6 +89,9 @@ struct Opts {
     #[structopt(long = "with-src", help = "Download rust-src [default: no download]")]
     with_src: bool,
 
+    #[structopt(long = "with-dev", help = "Download rustc-dev [default: no download]")]
+    with_dev: bool,
+
     #[structopt(
         long = "test-dir",
         help = "Root directory for tests",

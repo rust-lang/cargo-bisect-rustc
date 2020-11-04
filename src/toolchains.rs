@@ -259,6 +259,28 @@ impl Toolchain {
             .map_err(InstallError::Download)?;
         }
 
+        if dl_params.install_dev {
+            let filename = format!("rustc-dev-nightly-{}", self.host);
+            download_tarball(
+                &client,
+                "rustc-dev",
+                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
+                Some(&PathBuf::from(&filename).join(format!("rustc-dev-{}", self.host))),
+                tmpdir.path(),
+            )
+            .map_err(InstallError::Download)?;
+            // llvm-tools-(preview) is currently required for using rustc-dev https://github.com/rust-lang/rust/issues/72594
+            let filename = format!("llvm-tools-nightly-{}", self.host);
+            download_tarball(
+                &client,
+                "llvm-tools",
+                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
+                Some(&PathBuf::from(&filename).join("llvm-tools-preview")),
+                tmpdir.path(),
+            )
+            .map_err(InstallError::Download)?;
+        }
+
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
 
         Ok(())
@@ -412,6 +434,7 @@ pub(crate) struct DownloadParams {
     tmp_dir: PathBuf,
     install_dir: PathBuf,
     install_src: bool,
+    install_dev: bool,
     without_cargo: bool,
     force_install: bool,
 }
@@ -437,6 +460,7 @@ impl DownloadParams {
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
             install_src: cfg.args.with_src,
+            install_dev: cfg.args.with_dev,
             without_cargo: cfg.args.without_cargo,
             force_install: cfg.args.force_install,
         }
