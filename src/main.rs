@@ -666,9 +666,7 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
         let r = match t.install(&client, &dl_spec) {
             Ok(()) => {
                 let outcome = t.test(&cfg);
-                if !cfg.args.preserve {
-                    let _ = t.remove(&dl_spec);
-                }
+                remove_toolchain(cfg, t, &dl_spec);
                 // we want to fail, so a successful build doesn't satisfy us
                 match outcome {
                     TestOutcome::Baseline => Satisfies::No,
@@ -696,6 +694,45 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
     eprintln!("{}", tc_found.red());
     eprintln!("{}", "*".repeat(80).dimmed().bold());
     eprintln!();
+}
+
+fn remove_toolchain(cfg: &Config, toolchain: &Toolchain, dl_params: &DownloadParams) {
+    if cfg.args.preserve {
+        // If `rustup toolchain link` was used to link to nightly, then even
+        // with --preserve, the toolchain link should be removed, otherwise it
+        // will go stale after 24 hours.
+        let toolchain_dir = cfg.toolchains_path.join(toolchain.rustup_name());
+        match fs::symlink_metadata(&toolchain_dir) {
+            Ok(meta) => {
+                #[cfg(windows)]
+                let is_junction = {
+                    use std::os::windows::fs::MetadataExt;
+                    (meta.file_attributes() & 1024) != 0
+                };
+                #[cfg(not(windows))]
+                let is_junction = false;
+                if !meta.file_type().is_symlink() && !is_junction {
+                    return;
+                }
+                debug!("removing linked toolchain {}", toolchain);
+            }
+            Err(e) => {
+                debug!(
+                    "remove_toolchain: cannot stat toolchain {}: {}",
+                    toolchain, e
+                );
+                return;
+            }
+        }
+    }
+    if let Err(e) = toolchain.remove(dl_params) {
+        debug!(
+            "failed to remove toolchain {} in {}: {}",
+            toolchain,
+            cfg.toolchains_path.display(),
+            e
+        );
+    }
 }
 
 fn print_final_report(
@@ -859,16 +896,12 @@ fn install_and_test(
                 TestOutcome::Regressed => Satisfies::Yes,
             };
             eprintln!("RESULT: {}, ===> {}", t, r);
-            if !cfg.args.preserve {
-                let _ = t.remove(&dl_spec);
-            }
+            remove_toolchain(cfg, t, &dl_spec);
             eprintln!();
             Ok(r)
         }
         Err(error) => {
-            if !cfg.args.preserve {
-                let _ = t.remove(&dl_spec);
-            }
+            remove_toolchain(cfg, t, &dl_spec);
             Err(error)
         }
     }
