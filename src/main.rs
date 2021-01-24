@@ -762,7 +762,7 @@ fn print_final_report(
     eprintln!("regressed nightly: {}", nightly_toolchains[*nightly_found],);
 
     eprintln!(
-        "searched commits: from https://github.com/rust-lang/rust/commit/{0} to https://github.com/rust-lang/rust/commit/{1}",
+        "searched commit range: https://github.com/rust-lang/rust/compare/{0}...{1}",
         ci_toolchains.first().unwrap(),
         ci_toolchains.last().unwrap(),
     );
