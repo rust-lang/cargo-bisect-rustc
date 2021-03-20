@@ -10,7 +10,7 @@ the regression.
 If you're going to bisect for linux-musl host, install musl toolchain and run:
 
 ```sh
-cargo install cargo-bisect-rustc --feature git2/vendored-openssl
+cargo install cargo-bisect-rustc --features git2/vendored-openssl
 ```
 
 Otherwise, run:
