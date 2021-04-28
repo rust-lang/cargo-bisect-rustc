@@ -188,9 +188,9 @@ impl FromStr for Bound {
 }
 
 impl Bound {
-    fn sha(self) -> Result<String, Error> {
+    fn sha(&self) -> Result<String, Error> {
         match self {
-            Bound::Commit(commit) => Ok(commit),
+            Bound::Commit(commit) => Ok(commit.clone()),
             Bound::Date(date) => {
                 let date_str = date.format(YYYY_MM_DD);
                 let url = format!(
@@ -213,7 +213,7 @@ impl Bound {
         }
     }
 
-    fn as_commit(self) -> Result<Self, Error> {
+    fn as_commit(&self) -> Result<Self, Error> {
         self.sha().map(Bound::Commit)
     }
 }
@@ -246,22 +246,20 @@ impl Config {
 
         let saw_ice = || -> bool { stderr_utf8.contains("error: internal compiler error") };
 
-        let input = (self.output_processing_mode(), status.success());
+        let input = (self.regress_on(), status.success());
         let result = match input {
-            (OutputProcessingMode::RegressOnErrorStatus, true) => TestOutcome::Baseline,
-            (OutputProcessingMode::RegressOnErrorStatus, false) => TestOutcome::Regressed,
-
-            (OutputProcessingMode::RegressOnSuccessStatus, true) => TestOutcome::Regressed,
-            (OutputProcessingMode::RegressOnSuccessStatus, false) => TestOutcome::Baseline,
-
-            (OutputProcessingMode::RegressOnIceAlone, _) => {
+            (RegressOn::ErrorStatus, true) => TestOutcome::Baseline,
+            (RegressOn::ErrorStatus, false) => TestOutcome::Regressed,
+            (RegressOn::SuccessStatus, true) => TestOutcome::Regressed,
+            (RegressOn::SuccessStatus, false) => TestOutcome::Baseline,
+            (RegressOn::IceAlone, _) => {
                 if saw_ice() {
                     TestOutcome::Regressed
                 } else {
                     TestOutcome::Baseline
                 }
             }
-            (OutputProcessingMode::RegressOnNotIce, _) => {
+            (RegressOn::NotIce, _) => {
                 if saw_ice() {
                     TestOutcome::Baseline
                 } else {
@@ -269,8 +267,8 @@ impl Config {
                 }
             }
 
-            (OutputProcessingMode::RegressOnNonCleanError, true) => TestOutcome::Regressed,
-            (OutputProcessingMode::RegressOnNonCleanError, false) => {
+            (RegressOn::NonCleanError, true) => TestOutcome::Regressed,
+            (RegressOn::NonCleanError, false) => {
                 if saw_ice() {
                     TestOutcome::Regressed
                 } else {
@@ -285,13 +283,13 @@ impl Config {
         result
     }
 
-    fn output_processing_mode(&self) -> OutputProcessingMode {
+    fn regress_on(&self) -> RegressOn {
         match self.args.regress.as_str() {
-            "error" => OutputProcessingMode::RegressOnErrorStatus,
-            "non-error" => OutputProcessingMode::RegressOnNonCleanError,
-            "ice" => OutputProcessingMode::RegressOnIceAlone,
-            "non-ice" => OutputProcessingMode::RegressOnNotIce,
-            "success" => OutputProcessingMode::RegressOnSuccessStatus,
+            "error" => RegressOn::ErrorStatus,
+            "non-error" => RegressOn::NonCleanError,
+            "ice" => RegressOn::IceAlone,
+            "non-ice" => RegressOn::NotIce,
+            "success" => RegressOn::SuccessStatus,
             setting => panic!("Unknown --regress setting: {:?}", setting),
         }
     }
@@ -299,8 +297,8 @@ impl Config {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, StructOpt)]
 /// Customize what is treated as regression.
-enum OutputProcessingMode {
-    /// `RegressOnErrorStatus`: Marks test outcome as `Regressed` if and only if
+enum RegressOn {
+    /// `ErrorStatus`: Marks test outcome as `Regressed` if and only if
     /// the `rustc` process reports a non-success status. This corresponds to
     /// when `rustc` has an internal compiler error (ICE) or when it detects an
     /// error in the input program.
@@ -309,58 +307,54 @@ enum OutputProcessingMode {
     /// thus the default setting.
     ///
     /// You explicitly opt into this seting via `--regress=error`.
-    RegressOnErrorStatus,
+    ErrorStatus,
 
-    /// `RegressOnSuccessStatus`: Marks test outcome as `Regressed` if and only
+    /// `SuccessStatus`: Marks test outcome as `Regressed` if and only
     /// if the `rustc` process reports a success status. This corresponds to
     /// when `rustc` believes it has successfully compiled the program. This
     /// covers the use case for when you want to bisect to see when a bug was
     /// fixed.
     ///
     /// You explicitly opt into this seting via `--regress=success`.
-    RegressOnSuccessStatus,
+    SuccessStatus,
 
-    /// `RegressOnIceAlone`: Marks test outcome as `Regressed` if and only if
+    /// `IceAlone`: Marks test outcome as `Regressed` if and only if
     /// the `rustc` process issues a diagnostic indicating that an internal
     /// compiler error (ICE) occurred. This covers the use case for when you
     /// want to bisect to see when an ICE was introduced pon a codebase that is
     /// meant to produce a clean error.
     ///
     /// You explicitly opt into this seting via `--regress=ice`.
-    RegressOnIceAlone,
+    IceAlone,
 
-    /// `RegressOnNotIce`: Marks test outcome as `Regressed` if and only if
+    /// `NotIce`: Marks test outcome as `Regressed` if and only if
     /// the `rustc` process does not issue a diagnostic indicating that an
     /// internal compiler error (ICE) occurred. This covers the use case for
     /// when you want to bisect to see when an ICE was fixed.
     ///
     /// You explicitly opt into this setting via `--regress=non-ice`
-    RegressOnNotIce,
+    NotIce,
 
-    /// `RegressOnNonCleanError`: Marks test outcome as `Baseline` if and only
+    /// `NonCleanError`: Marks test outcome as `Baseline` if and only
     /// if the `rustc` process reports error status and does not issue any
     /// diagnostic indicating that an internal compiler error (ICE) occurred.
     /// This is the use case if the regression is a case where an ill-formed
     /// program has stopped being properly rejected by the compiler.
     ///
-    /// (The main difference between this case and `RegressOnSuccessStatus` is
-    /// the handling of ICE: `RegressOnSuccessStatus` assumes that ICE should be
-    /// considered baseline; `RegressOnNonCleanError` assumes ICE should be
+    /// (The main difference between this case and `SuccessStatus` is
+    /// the handling of ICE: `SuccessStatus` assumes that ICE should be
+    /// considered baseline; `NonCleanError` assumes ICE should be
     /// considered a sign of a regression.)
     ///
     /// You explicitly opt into this seting via `--regress=non-error`.
-    RegressOnNonCleanError,
+    NonCleanError,
 }
 
-impl OutputProcessingMode {
+impl RegressOn {
     fn must_process_stderr(&self) -> bool {
         match self {
-            OutputProcessingMode::RegressOnErrorStatus
-            | OutputProcessingMode::RegressOnSuccessStatus => false,
-
-            OutputProcessingMode::RegressOnNonCleanError
-            | OutputProcessingMode::RegressOnIceAlone
-            | OutputProcessingMode::RegressOnNotIce => true,
+            RegressOn::ErrorStatus | RegressOn::SuccessStatus => false,
+            RegressOn::NonCleanError | RegressOn::IceAlone | RegressOn::NotIce => true,
         }
     }
 }
@@ -386,7 +380,7 @@ impl CommandTemplate {
         assert!(!self.0.is_empty());
         let mut s = self.0[0].to_string();
         for arg in &self.0[1..] {
-            s.push_str(" ");
+            s.push(' ');
             s.push_str(arg);
         }
         s
@@ -490,7 +484,7 @@ impl Config {
         }
 
         let repo_access: Box<dyn RustRepositoryAccessor>;
-        repo_access = match args.access.as_ref().map(|x| x.as_str()) {
+        repo_access = match args.access.as_deref() {
             None | Some("checkout") => Box::new(AccessViaLocalGit),
             Some("github") => Box::new(AccessViaGithub),
             Some(other) => bail!("unknown access argument: {}", other),
@@ -625,7 +619,7 @@ fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
 
 fn searched_range(
     cfg: &Config,
-    searched_toolchains: &Vec<Toolchain>,
+    searched_toolchains: &[Toolchain],
 ) -> (ToolchainSpec, ToolchainSpec) {
     let first_toolchain = searched_toolchains.first().unwrap().spec.clone();
     let last_toolchain = searched_toolchains.last().unwrap().spec.clone();
@@ -912,14 +906,13 @@ fn bisect_to_regression(
     cfg: &Config,
     client: &Client,
     dl_spec: &DownloadParams,
-) -> Result<usize, InstallError> {
-    let found = least_satisfying(&toolchains, |t| {
+) -> usize {
+    least_satisfying(&toolchains, |t| {
         match install_and_test(&t, &cfg, &client, &dl_spec) {
             Ok(r) => r,
             Err(_) => Satisfies::Unknown,
         }
-    });
-    Ok(found)
+    })
 }
 
 fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
@@ -933,12 +926,10 @@ fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
 fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
     if let Some(Bound::Date(date)) = cfg.args.end {
         date
+    } else if let Some(date) = Toolchain::default_nightly() {
+        date
     } else {
-        if let Some(date) = Toolchain::default_nightly() {
-            date
-        } else {
-            chrono::Utc::now().date()
-        }
+        chrono::Utc::now().date()
     }
 }
 
@@ -1043,7 +1034,8 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         }
     }
 
-    let first_success = first_success.ok_or(format_err!("could not find a nightly that built"))?;
+    let first_success =
+        first_success.ok_or_else(|| format_err!("could not find a nightly that built"))?;
 
     // confirm that the end of the date range has the regression
     let mut t_end = Toolchain {
@@ -1076,7 +1068,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         ToolchainSpec::Nightly { date: last_failure },
     );
 
-    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec)?;
+    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec);
 
     Ok(BisectionResult {
         dl_spec,
@@ -1158,7 +1150,7 @@ fn bisect_ci_via(
             "  commit[{}] {}: {}",
             j,
             commit.date.date(),
-            commit.summary.split("\n").next().unwrap()
+            commit.summary.split('\n').next().unwrap()
         )
     }
 
@@ -1242,7 +1234,7 @@ fn bisect_ci_in_commits(
         }
     }
 
-    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec)?;
+    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec);
 
     Ok(BisectionResult {
         searched: toolchains,
