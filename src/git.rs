@@ -7,7 +7,7 @@ use std::env;
 use std::path::Path;
 
 use chrono::{TimeZone, Utc};
-use failure::{bail, Error};
+use failure::{bail, Error, ResultExt};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;
@@ -34,13 +34,20 @@ fn lookup_rev<'rev>(repo: &'rev Repository, rev: &str) -> Result<Git2Commit<'rev
 
 fn get_repo() -> Result<Repository, Error> {
     fn open(repo: &Path) -> Result<Repository, Error> {
+        eprintln!("refreshing repository at {:?}", repo);
+        // This uses the CLI because libgit2 is quite slow to fetch a large repository.
+        let status = std::process::Command::new("git")
+            .arg("fetch")
+            .current_dir(repo)
+            .status()
+            .context(format!(
+                "expected `git` command-line executable to be installed"
+            ))?;
+        if !status.success() {
+            bail!("git fetch failed exit status {}", status);
+        }
         eprintln!("opening existing repository at {:?}", repo);
         let repo = Repository::open(repo)?;
-        {
-            eprintln!("refreshing repository");
-            let mut remote = repo.remote_anonymous(RUST_SRC_URL)?;
-            remote.fetch(&["master"], None, None)?;
-        }
         Ok(repo)
     }
 
