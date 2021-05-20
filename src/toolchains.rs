@@ -182,106 +182,49 @@ impl Toolchain {
 
         debug!("installing via download {}", self);
 
-        let rustc_filename = format!("rustc-nightly-{}", self.host);
-
         let location = match self.spec {
             ToolchainSpec::Ci { ref commit, .. } => commit.to_string(),
             ToolchainSpec::Nightly { ref date } => date.format(YYYY_MM_DD).to_string(),
         };
 
-        // download rustc.
-        if let Err(e) = download_tarball(
-            client,
-            &format!("rustc for {}", self.host),
-            &format!(
-                "{}/{}/{}.tar",
-                dl_params.url_prefix, location, rustc_filename
-            ),
-            Some(&PathBuf::from(&rustc_filename).join("rustc")),
-            tmpdir.path(),
-        ) {
-            match e {
-                DownloadError::NotFound(url) => {
-                    return Err(InstallError::NotFound {
-                        url,
-                        spec: self.spec.clone(),
-                    })
+        let components = dl_params
+            .components
+            .iter()
+            .map(|component| {
+                if component == "rust-src" {
+                    // rust-src is target-independent
+                    format!("rust-src-nightly")
+                } else {
+                    format!("{}-nightly-{}", component, self.host)
                 }
-                _ => return Err(InstallError::Download(e)),
+            })
+            .chain(
+                self.std_targets
+                    .iter()
+                    .map(|target| format!("rust-std-nightly-{}", target)),
+            );
+
+        for component in components {
+            if let Err(e) = download_tarball(
+                client,
+                &component,
+                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, component),
+                tmpdir.path(),
+            ) {
+                match e {
+                    DownloadError::NotFound(url) => {
+                        return Err(InstallError::NotFound {
+                            url,
+                            spec: self.spec.clone(),
+                        })
+                    }
+                    _ => return Err(InstallError::Download(e)),
+                }
             }
         }
 
-        // download libstd.
-        for target in &self.std_targets {
-            let rust_std_filename = format!("rust-std-nightly-{}", target);
-            download_tarball(
-                client,
-                &format!("std for {}", target),
-                &format!(
-                    "{}/{}/{}.tar",
-                    dl_params.url_prefix, location, rust_std_filename
-                ),
-                Some(
-                    &PathBuf::from(&rust_std_filename)
-                        .join(format!("rust-std-{}", target))
-                        .join("lib"),
-                ),
-                &tmpdir.path().join("lib"),
-            )
-            .map_err(InstallError::Download)?;
-        }
-
-        // download cargo by default
-        // deactivate with the `--without-cargo` flag
-        // this default behavior was changed as of v0.6.0
-        // see: https://github.com/rust-lang/cargo-bisect-rustc/issues/81
-        if !dl_params.without_cargo {
-            let filename = format!("cargo-nightly-{}", self.host);
-            download_tarball(
-                client,
-                &format!("cargo for {}", self.host),
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join("cargo")),
-                tmpdir.path(),
-            )
-            .map_err(InstallError::Download)?;
-        }
-
-        if dl_params.install_src {
-            let filename = "rust-src-nightly";
-            download_tarball(
-                client,
-                "rust-src",
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join("rust-src")),
-                tmpdir.path(),
-            )
-            .map_err(InstallError::Download)?;
-        }
-
-        if dl_params.install_dev {
-            let filename = format!("rustc-dev-nightly-{}", self.host);
-            download_tarball(
-                client,
-                "rustc-dev",
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join(format!("rustc-dev-{}", self.host))),
-                tmpdir.path(),
-            )
-            .map_err(InstallError::Download)?;
-            // llvm-tools-(preview) is currently required for using rustc-dev https://github.com/rust-lang/rust/issues/72594
-            let filename = format!("llvm-tools-nightly-{}", self.host);
-            download_tarball(
-                client,
-                "llvm-tools",
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
-                Some(&PathBuf::from(&filename).join("llvm-tools-preview")),
-                tmpdir.path(),
-            )
-            .map_err(InstallError::Download)?;
-        }
-
-        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
+        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
+        Ok(())
     }
 
     pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
@@ -457,9 +400,7 @@ pub(crate) struct DownloadParams {
     url_prefix: String,
     tmp_dir: PathBuf,
     install_dir: PathBuf,
-    install_src: bool,
-    install_dev: bool,
-    without_cargo: bool,
+    components: Vec<String>,
     force_install: bool,
 }
 
@@ -479,13 +420,27 @@ impl DownloadParams {
     }
 
     pub(crate) fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
+        let mut components = Vec::new();
+        components.push("rustc".to_string());
+        if !cfg.args.without_cargo {
+            components.push("cargo".to_string());
+        }
+        if cfg.args.with_dev {
+            components.push("rustc-dev".to_string());
+            // llvm-tools-(preview) is currently required for using rustc-dev
+            // https://github.com/rust-lang/rust/issues/72594
+            components.push("llvm-tools".to_string());
+        }
+        if cfg.args.with_src {
+            components.push("rust-src".to_string());
+        }
+        components.extend(cfg.args.components.clone());
+
         DownloadParams {
             url_prefix,
             tmp_dir: cfg.rustup_tmp_path.clone(),
             install_dir: cfg.toolchains_path.clone(),
-            install_src: cfg.args.with_src,
-            install_dev: cfg.args.with_dev,
-            without_cargo: cfg.args.without_cargo,
+            components,
             force_install: cfg.args.force_install,
         }
     }
@@ -542,46 +497,47 @@ pub(crate) fn download_tar_xz(
     client: &Client,
     name: &str,
     url: &str,
-    strip_prefix: Option<&Path>,
     dest: &Path,
 ) -> Result<(), DownloadError> {
     let (response, mut bar) = download_progress(client, name, url)?;
     let response = TeeReader::new(response, &mut bar);
     let response = XzDecoder::new(response);
-    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)
+    unarchive(response, dest).map_err(DownloadError::Archive)?;
+    Ok(())
 }
 
 pub(crate) fn download_tar_gz(
     client: &Client,
     name: &str,
     url: &str,
-    strip_prefix: Option<&Path>,
     dest: &Path,
 ) -> Result<(), DownloadError> {
     let (response, mut bar) = download_progress(client, name, url)?;
     let response = TeeReader::new(response, &mut bar);
     let response = GzDecoder::new(response);
-    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)
+    unarchive(response, dest).map_err(DownloadError::Archive)?;
+    Ok(())
 }
 
-pub(crate) fn unarchive<R: Read>(
-    r: R,
-    strip_prefix: Option<&Path>,
-    dest: &Path,
-) -> Result<(), ArchiveError> {
+pub(crate) fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> {
     for entry in Archive::new(r).entries().map_err(ArchiveError::Archive)? {
         let mut entry = entry.map_err(ArchiveError::Archive)?;
+        let entry_path = entry.path().map_err(ArchiveError::Archive)?;
         let dest_path = {
-            let path = entry.path().map_err(ArchiveError::Archive)?;
-            let sub_path = match strip_prefix {
-                Some(prefix) => path.strip_prefix(prefix).map(PathBuf::from),
-                None => Ok(path.into_owned()),
-            };
-            match sub_path {
-                Ok(sub_path) => dest.join(sub_path),
-                Err(_) => continue,
-            }
+            let mut components = entry_path.components();
+            // Remove the first two components, which are usually of the form
+            // COMPONENT-nightly-HOST/COMPONENT.
+            components.next();
+            // The second component here may also include some top-level
+            // things like license files and install scripts. These will be
+            // skipped in the check below if the path is empty.
+            components.next();
+            dest.join(components.as_path())
         };
+        if dest_path == dest {
+            // Skip root dir and files outside of "COMPONENT".
+            continue;
+        }
         fs::create_dir_all(dest_path.parent().unwrap()).map_err(ArchiveError::CreateDir)?;
         entry.unpack(dest_path).map_err(ArchiveError::Archive)?;
     }
@@ -593,13 +549,12 @@ pub(crate) fn download_tarball(
     client: &Client,
     name: &str,
     url: &str,
-    strip_prefix: Option<&Path>,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    match download_tar_xz(client, name, &format!("{}.xz", url,), strip_prefix, dest) {
+    match download_tar_xz(client, name, &format!("{}.xz", url,), dest) {
         Ok(()) => return Ok(()),
         Err(DownloadError::NotFound { .. }) => {}
         Err(e) => return Err(e),
     }
-    download_tar_gz(client, name, &format!("{}.gz", url,), strip_prefix, dest)
+    download_tar_gz(client, name, &format!("{}.gz", url,), dest)
 }
