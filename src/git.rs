@@ -38,6 +38,7 @@ fn get_repo() -> Result<Repository, Error> {
         // This uses the CLI because libgit2 is quite slow to fetch a large repository.
         let status = std::process::Command::new("git")
             .arg("fetch")
+            .arg(RUST_SRC_URL)
             .current_dir(repo)
             .status()
             .context(format!(
