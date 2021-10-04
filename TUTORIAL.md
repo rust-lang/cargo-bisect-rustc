@@ -233,7 +233,29 @@ cargo-bisect-rustc --script=./test.sh --test-dir=foo \
     --end=2c2e2c57dc2140cfb62a8abb9312b89f02c59f3c
 ```
 
+## Varying tests
 
+When writing your test and picking a bisection range, you should be careful to
+ensure that the test won't vary between pass/fail over time. It should only
+transition from good to bad once in the bisection range (it must change
+[monotonically]). The following are some suggestions for dealing with a
+potentially varying test:
+
+* Use the `-vv` flag (very verbose) to display the output from the compiler to
+  make sure it is what you expect.
+* Use the [`--prompt`](#testing-interactively) flag to inspect the output and
+  verify each step.
+* Beware that some issues may get fixed and then regress multiple times. Try
+  to keep the bisection range as close to the present day as possible. Compare
+  the output of the "regressed" commit to the latest nightly to see if they
+  are the same.
+* If the test only fails sporadically, use a [script](#testing-with-a-script)
+  to run the compiler many times until it fails, or it passes enough
+  iterations that you feel confident that it is good.
+* If the code requires relatively new language features, be careful not to
+  pick a starting range that is too old.
+
+[monotonically]: https://en.wikipedia.org/wiki/Bisection_(software_engineering)#Monotonicity
 [`cargo-bisect-rustc`]: https://github.com/rust-lang-nursery/cargo-bisect-rustc
 [issue #53157]: https://github.com/rust-lang/rust/issues/53157
 [issue #55036]: https://github.com/rust-lang/rust/issues/55036
