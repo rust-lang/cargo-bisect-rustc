@@ -114,6 +114,13 @@ struct Opts {
     )]
     prompt: bool,
 
+    #[structopt(
+        long = "timeout",
+        short = "t",
+        help = "Assume failure after specified number of seconds (for bisecting hangs)"
+    )]
+    timeout: Option<usize>,
+
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
