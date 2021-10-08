@@ -317,16 +317,37 @@ impl Toolchain {
                     .join(&format!("target-{}", self.rustup_name())),
             );
         }
-        let mut cmd = match cfg.args.script {
-            Some(ref script) => {
+
+        let mut cmd = match (cfg.args.script.as_ref(), cfg.args.timeout) {
+            (Some(script), None) => {
                 let mut cmd = Command::new(script);
                 cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
                 cmd.args(&cfg.args.command_args);
                 cmd
             }
-            None => {
+            (None, None) => {
                 let mut cmd = Command::new("cargo");
                 cmd.arg(&format!("+{}", self.rustup_name()));
+                if cfg.args.command_args.is_empty() {
+                    cmd.arg("build");
+                } else {
+                    cmd.args(&cfg.args.command_args);
+                }
+                cmd
+            }
+            (Some(script), Some(timeout)) => {
+                let mut cmd = Command::new("timeout");
+                cmd.arg(timeout.to_string());
+                cmd.arg(script);
+                cmd.args(&cfg.args.command_args);
+                cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
+                cmd
+            }
+            (None, Some(timeout)) => {
+                let mut cmd = Command::new("timeout");
+                cmd.arg(timeout.to_string());
+                cmd.arg("cargo");
+                cmd.arg(format!("+{}", self.rustup_name()));
                 if cfg.args.command_args.is_empty() {
                     cmd.arg("build");
                 } else {
@@ -376,6 +397,14 @@ impl Toolchain {
             loop {
                 let output = self.run_test(cfg);
                 let status = output.status;
+
+                //timeout returns exit code 124 on expiration
+                if status.code() == Some(124) {
+                    match cfg.args.timeout {
+                        Some(_) => break TestOutcome::Regressed,
+                        None => panic!("Process timed out but no timeout was specified. Please check host configuration for timeouts and try again.")
+                    }
+                }
 
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
