@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.6.1
+
+### Added
+
+- Added `--with-dev` option to download rustc-dev component.
+  [#101](https://github.com/rust-lang/cargo-bisect-rustc/pull/101)
+- Added `--timeout` option to trigger a failure if compilation takes too long.
+  [#135](https://github.com/rust-lang/cargo-bisect-rustc/pull/135)
+
+### Changed
+- Use the `git` CLI to fetch the `rust-lang/rust` repo when looking for CI commits to improve performance.
+  [#130](https://github.com/rust-lang/cargo-bisect-rustc/pull/130)
+
+### Fixed
+
+- Fixed off-by-one error when examining the date of the local nightly toolchain.
+  [#113](https://github.com/rust-lang/cargo-bisect-rustc/pull/113)
+- Fixed issue with `--preserve` when linking the nightly toolchain leaving a stale link.
+  [#125](https://github.com/rust-lang/cargo-bisect-rustc/pull/125)
+
 ## v0.6.0
 
 ### Added
