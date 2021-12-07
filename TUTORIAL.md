@@ -89,7 +89,10 @@ cargo bisect-rustc --test-dir=foo --start=2018-05-07 --end=2018-08-04
 ```
 
 By default it will run `cargo build` in the project and check whether or not
-it fails. In just a few steps, we find that it stopped working on
+it fails.  You can also use the flag `--regress` to specify other common
+regression criteria, e.g. `--regress=ice` for internal compiler errors.
+
+In out example, in just a few steps, we can we find that it stopped working on
 `nightly-2018-07-30`.
 
 > *Note:* Consider using the `--preserve` flag to keep the downloaded
@@ -222,6 +225,8 @@ previous interactive session can be hands-free automated with this script:
 `foo/test.sh`:
 ```sh
 #!/bin/sh
+
+# Fail if we no longer get a `E0642` error:
 cargo check 2>&1 | grep E0642
 ```
 
