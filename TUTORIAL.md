@@ -261,6 +261,6 @@ potentially varying test:
   pick a starting range that is too old.
 
 [monotonically]: https://en.wikipedia.org/wiki/Bisection_(software_engineering)#Monotonicity
-[`cargo-bisect-rustc`]: https://github.com/rust-lang-nursery/cargo-bisect-rustc
+[`cargo-bisect-rustc`]: https://github.com/rust-lang/cargo-bisect-rustc
 [issue #53157]: https://github.com/rust-lang/rust/issues/53157
 [issue #55036]: https://github.com/rust-lang/rust/issues/55036
