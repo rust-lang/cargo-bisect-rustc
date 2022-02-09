@@ -251,7 +251,10 @@ impl Config {
             status, stdout_utf8, stderr_utf8
         );
 
-        let saw_ice = || -> bool { stderr_utf8.contains("error: internal compiler error") };
+        let saw_ice = || -> bool {
+            stderr_utf8.contains("error: internal compiler error")
+                || stderr_utf8.contains("thread 'rustc' has overflowed its stack")
+        };
 
         let input = (self.output_processing_mode(), status.success());
         let result = match input {
