@@ -77,8 +77,8 @@ impl<'a> CommitsQuery<'a> {
 }
 
 const PER_PAGE: usize = 100;
-const OWNER: &'static str = "rust-lang";
-const REPO: &'static str = "rust";
+const OWNER: &str = "rust-lang";
+const REPO: &str = "rust";
 
 trait ToUrl {
     fn url(&self) -> String;
@@ -202,8 +202,8 @@ fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(
     // parse the JSON into an array of the expected Elem type
     let elems: Vec<Elem> = response.json()?;
 
-    // if `elems` is empty, then we've run out of useful pages to lookup.
-    if elems.len() == 0 {
+    if elems.is_empty() {
+        // we've run out of useful pages to lookup
         return Ok(Loop::Break);
     }
 

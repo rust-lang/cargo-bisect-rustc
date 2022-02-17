@@ -112,7 +112,7 @@ impl Toolchain {
         }
 
         static DATE: OnceCell<Option<GitDate>> = OnceCell::new();
-        *(DATE.get_or_init(|| inner()))
+        *(DATE.get_or_init(inner))
     }
 
     pub(crate) fn is_current_nightly(&self) -> bool {
@@ -360,7 +360,7 @@ impl Toolchain {
         cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
 
         // let `cmd` capture stderr for us to process afterward.
-        let must_capture_output = cfg.output_processing_mode().must_process_stderr();
+        let must_capture_output = cfg.regress_on().must_process_stderr();
         let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
 
         let default_stdio = || {
