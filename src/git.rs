@@ -41,9 +41,7 @@ fn get_repo() -> Result<Repository, Error> {
             .arg(RUST_SRC_URL)
             .current_dir(repo)
             .status()
-            .context(format!(
-                "expected `git` command-line executable to be installed"
-            ))?;
+            .context("expected `git` command-line executable to be installed".to_string())?;
         if !status.success() {
             bail!("git fetch failed exit status {}", status);
         }

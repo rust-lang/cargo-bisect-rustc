@@ -191,7 +191,7 @@ impl Toolchain {
 
         // download rustc.
         if let Err(e) = download_tarball(
-            &client,
+            client,
             &format!("rustc for {}", self.host),
             &format!(
                 "{}/{}/{}.tar",
@@ -215,7 +215,7 @@ impl Toolchain {
         for target in &self.std_targets {
             let rust_std_filename = format!("rust-std-nightly-{}", target);
             download_tarball(
-                &client,
+                client,
                 &format!("std for {}", target),
                 &format!(
                     "{}/{}/{}.tar",
@@ -238,7 +238,7 @@ impl Toolchain {
         if !dl_params.without_cargo {
             let filename = format!("cargo-nightly-{}", self.host);
             download_tarball(
-                &client,
+                client,
                 &format!("cargo for {}", self.host),
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join("cargo")),
@@ -250,7 +250,7 @@ impl Toolchain {
         if dl_params.install_src {
             let filename = "rust-src-nightly";
             download_tarball(
-                &client,
+                client,
                 "rust-src",
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join("rust-src")),
@@ -262,7 +262,7 @@ impl Toolchain {
         if dl_params.install_dev {
             let filename = format!("rustc-dev-nightly-{}", self.host);
             download_tarball(
-                &client,
+                client,
                 "rustc-dev",
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join(format!("rustc-dev-{}", self.host))),
@@ -272,7 +272,7 @@ impl Toolchain {
             // llvm-tools-(preview) is currently required for using rustc-dev https://github.com/rust-lang/rust/issues/72594
             let filename = format!("llvm-tools-nightly-{}", self.host);
             download_tarball(
-                &client,
+                client,
                 "llvm-tools",
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, filename,),
                 Some(&PathBuf::from(&filename).join("llvm-tools-preview")),
