@@ -26,7 +26,21 @@ impl Commit {
 }
 
 fn lookup_rev<'rev>(repo: &'rev Repository, rev: &str) -> Result<Git2Commit<'rev>, Error> {
-    if let Ok(c) = repo.revparse_single(rev)?.into_commit() {
+    let revision = repo.revparse_single(rev)?;
+
+    // Find the merge-base between the revision and master.
+    // If revision is a normal commit contained in master, the merge-base will be the commit itself.
+    // If revision is a tag (e.g. a release version), the merge-base will contain the latest master
+    // commit contained in that tag.
+    let master_id = repo.revparse_single("origin/master")?.id();
+    let revision_id = revision
+        .as_tag()
+        .map(|tag| tag.target_id())
+        .unwrap_or_else(|| revision.id());
+
+    let common_base = repo.merge_base(master_id, revision_id)?;
+
+    if let Ok(c) = repo.find_commit(common_base) {
         return Ok(c);
     }
     bail!("Could not find a commit for revision specifier '{}'", rev)
