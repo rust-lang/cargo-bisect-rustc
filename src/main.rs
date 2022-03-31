@@ -132,10 +132,18 @@ struct Opts {
     )]
     command_args: Vec<OsString>,
 
-    #[structopt(long = "start", help = "Left bound for search (*without* regression)")]
+    #[structopt(
+        long = "start",
+        help = "Left bound for search (*without* regression). You can use \
+a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
+    )]
     start: Option<Bound>,
 
-    #[structopt(long = "end", help = "Right bound for search (*with* regression)")]
+    #[structopt(
+        long = "end",
+        help = "Right bound for search (*with* regression). You can use \
+a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
+    )]
     end: Option<Bound>,
 
     #[structopt(long = "by-commit", help = "Bisect via commit artifacts")]
