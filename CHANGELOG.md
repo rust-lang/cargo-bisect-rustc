@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.2
+
+### Added
+
+- `--start` and `--end` now support git tags (like `1.59.0`) to bisect between stable releases.
+  [#147](https://github.com/rust-lang/cargo-bisect-rustc/pull/147)
+
+### Changed
+
+- Stack overflow is now treated as an ICE.
+  [#142](https://github.com/rust-lang/cargo-bisect-rustc/pull/142)
+
 ## v0.6.1
 
 ### Added
