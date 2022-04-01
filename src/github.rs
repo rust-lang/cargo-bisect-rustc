@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::Commit;
 
 #[derive(Serialize, Deserialize, Debug)]
+struct GithubCommitComparison {
+    merge_base_commit: GithubCommitElem,
+}
+#[derive(Serialize, Deserialize, Debug)]
 struct GithubCommitElem {
     commit: GithubCommit,
     sha: String,
@@ -53,11 +57,11 @@ fn headers() -> Result<reqwest::header::HeaderMap, Error> {
 }
 
 pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
-    let url = SingleCommitUrl { sha }.url();
+    let url = CommitDetailsUrl { sha }.url();
     let client = Client::builder().default_headers(headers()?).build()?;
     let response: Response = client.get(&url).send()?;
-    let elem: GithubCommitElem = response.json()?;
-    elem.git_commit()
+    let elem: GithubCommitComparison = response.json()?;
+    elem.merge_base_commit.git_commit()
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -89,7 +93,7 @@ struct CommitsUrl<'a> {
     since: &'a str,
     sha: &'a str,
 }
-struct SingleCommitUrl<'a> {
+struct CommitDetailsUrl<'a> {
     sha: &'a str,
 }
 
@@ -110,25 +114,23 @@ impl<'a> ToUrl for CommitsUrl<'a> {
     }
 }
 
-impl<'a> ToUrl for SingleCommitUrl<'a> {
+impl<'a> ToUrl for CommitDetailsUrl<'a> {
     fn url(&self) -> String {
         // "origin/master" is set as `sha` when there is no `--end=` definition
         // specified on the command line.  We define the GitHub master branch
         // HEAD commit as the end commit in this case
-        if self.sha == "origin/master" {
-            format!(
-                "https://api.github.com/repos/{OWNER}/{REPO}/commits/master",
-                OWNER = OWNER,
-                REPO = REPO,
-            )
+        let reference = if self.sha == "origin/master" {
+            "master"
         } else {
-            format!(
-                "https://api.github.com/repos/{OWNER}/{REPO}/commits/{REF}",
-                OWNER = OWNER,
-                REPO = REPO,
-                REF = self.sha
-            )
-        }
+            self.sha
+        };
+
+        format!(
+            "https://api.github.com/repos/{OWNER}/{REPO}/compare/master...{REF}",
+            OWNER = OWNER,
+            REPO = REPO,
+            REF = reference
+        )
     }
 }
 
