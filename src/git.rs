@@ -28,6 +28,9 @@ impl Commit {
 fn lookup_rev<'rev>(repo: &'rev Repository, rev: &str) -> Result<Git2Commit<'rev>, Error> {
     let revision = repo.revparse_single(rev)?;
 
+    // Update origin/master, since it might be stale
+    repo.find_remote("origin")?.fetch(&["master"], None, None)?;
+
     // Find the merge-base between the revision and master.
     // If revision is a normal commit contained in master, the merge-base will be the commit itself.
     // If revision is a tag (e.g. a release version), the merge-base will contain the latest master
