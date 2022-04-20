@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.3
+
+### Fixed
+
+- Fixed assumption that the rust-lang/rust remote repo is named "origin".
+  [#149](https://github.com/rust-lang/cargo-bisect-rustc/pull/149)
+
 ## v0.6.2
 
 ### Added
