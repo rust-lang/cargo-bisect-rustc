@@ -4,6 +4,7 @@ const RUST_SRC_URL: &str = "https://github.com/rust-lang/rust";
 const RUST_SRC_REPO: Option<&str> = option_env!("RUST_SRC_REPO");
 
 use std::env;
+use std::ops::Deref;
 use std::path::Path;
 
 use chrono::{TimeZone, Utc};
@@ -25,14 +26,29 @@ impl Commit {
     }
 }
 
-fn lookup_rev<'rev>(repo: &'rev Repository, rev: &str) -> Result<Git2Commit<'rev>, Error> {
+struct RustcRepo {
+    repository: Repository,
+    origin_remote: String,
+}
+
+impl Deref for RustcRepo {
+    type Target = Repository;
+
+    fn deref(&self) -> &Self::Target {
+        &self.repository
+    }
+}
+
+fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> Result<Git2Commit<'rev>, Error> {
     let revision = repo.revparse_single(rev)?;
 
     // Find the merge-base between the revision and master.
     // If revision is a normal commit contained in master, the merge-base will be the commit itself.
     // If revision is a tag (e.g. a release version), the merge-base will contain the latest master
     // commit contained in that tag.
-    let master_id = repo.revparse_single("origin/master")?.id();
+    let master_id = repo
+        .revparse_single(&format!("{}/master", repo.origin_remote))?
+        .id();
     let revision_id = revision
         .as_tag()
         .map(|tag| tag.target_id())
@@ -46,14 +62,20 @@ fn lookup_rev<'rev>(repo: &'rev Repository, rev: &str) -> Result<Git2Commit<'rev
     bail!("Could not find a commit for revision specifier '{}'", rev)
 }
 
-fn get_repo() -> Result<Repository, Error> {
-    fn open(repo: &Path) -> Result<Repository, Error> {
-        eprintln!("refreshing repository at {:?}", repo);
+fn get_repo() -> Result<RustcRepo, Error> {
+    fn open(path: &Path) -> Result<(Repository, String), Error> {
+        eprintln!("opening existing repository at {:?}", path);
+        let repo = Repository::open(path)?;
+
+        let origin_remote = find_origin_remote(&repo)?;
+        eprintln!("Found origin remote under name `{origin_remote}`");
+
+        eprintln!("refreshing repository at {:?}", path);
         // This uses the CLI because libgit2 is quite slow to fetch a large repository.
         let status = std::process::Command::new("git")
             .arg("fetch")
-            .arg(RUST_SRC_URL)
-            .current_dir(repo)
+            .arg(&origin_remote)
+            .current_dir(path)
             .status()
             .context(format!(
                 "expected `git` command-line executable to be installed"
@@ -61,21 +83,49 @@ fn get_repo() -> Result<Repository, Error> {
         if !status.success() {
             bail!("git fetch failed exit status {}", status);
         }
-        eprintln!("opening existing repository at {:?}", repo);
-        let repo = Repository::open(repo)?;
-        Ok(repo)
+
+        Ok((repo, origin_remote))
     }
 
     let loc = Path::new("rust.git");
-    match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
+    let (repository, origin_remote) = match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
         (Some(repo), _) => open(Path::new(&repo)),
         (None, _) if loc.exists() => open(loc),
         (None, Some(repo)) => open(Path::new(repo)),
         _ => {
             eprintln!("cloning rust repository");
-            Ok(RepoBuilder::new().bare(true).clone(RUST_SRC_URL, loc)?)
+            Ok((
+                RepoBuilder::new().bare(true).clone(RUST_SRC_URL, loc)?,
+                "origin".to_string(),
+            ))
         }
-    }
+    }?;
+
+    Ok(RustcRepo {
+        repository,
+        origin_remote,
+    })
+}
+
+fn find_origin_remote(repo: &Repository) -> Result<String, Error> {
+    repo.remotes()?
+        .iter()
+        .filter_map(|name| name.and_then(|name| repo.find_remote(name).ok()))
+        .find(|remote| {
+            remote
+                .url()
+                .map(|url| url.contains(RUST_SRC_URL))
+                .unwrap_or(false)
+        })
+        .and_then(|remote| remote.name().map(|name| name.to_string()))
+        .ok_or_else(|| {
+            failure::format_err!(
+                "rust-lang/rust remote not found. \
+Try adding a remote pointing to `{}` in the rust repository at `{}`.",
+                RUST_SRC_URL,
+                repo.path().display()
+            )
+        })
 }
 
 pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
