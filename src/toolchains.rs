@@ -281,9 +281,7 @@ impl Toolchain {
             .map_err(InstallError::Download)?;
         }
 
-        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
-
-        Ok(())
+        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
     }
 
     pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
@@ -305,7 +303,6 @@ impl Toolchain {
 
         let dir = dl_params.install_dir.join(rustup_name);
         fs::remove_dir_all(&dir)?;
-
         Ok(())
     }
 
