@@ -521,9 +521,9 @@ impl Config {
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
     // current UTC date
     let current = Utc::now().date();
-    match (&start, &end) {
+    match start.as_ref().zip(end.as_ref()) {
         // start date is after end date
-        (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
+        Some((Bound::Date(start), Bound::Date(end))) if end < &start => {
             bail!(
                 "end should be after start, got start: {} and end {}",
                 start,
@@ -531,7 +531,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
             );
         }
         // start date is after current date
-        (Some(Bound::Date(start)), Some(Bound::Date(_end))) if start > &current => {
+        Some((Bound::Date(start), _)) if start > &current => {
             bail!(
                 "start date should be on or before current date, got start date request: {} and current date is {}",
                 start,
@@ -539,17 +539,15 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
             );
         }
         // end date is after current date
-        (Some(Bound::Date(_start)), Some(Bound::Date(end))) if end > &current => {
+        Some((_, Bound::Date(end))) if end > &current => {
             bail!(
                 "end date should be on or before current date, got start date request: {} and current date is {}",
                 end,
                 current
             );
         }
-        _ => {}
+        _ => Ok(()),
     }
-
-    Ok(())
 }
 
 // Application entry point
