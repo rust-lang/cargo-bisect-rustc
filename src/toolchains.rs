@@ -360,14 +360,12 @@ impl Toolchain {
         let must_capture_output = cfg.regress_on().must_process_stderr();
         let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
 
-        let default_stdio = || {
-            if must_capture_output {
-                Stdio::piped()
-            } else if emit_output {
-                Stdio::inherit()
-            } else {
-                Stdio::null()
-            }
+        let default_stdio = if must_capture_output {
+            Stdio::piped
+        } else if emit_output {
+            Stdio::inherit
+        } else {
+            Stdio::null
         };
 
         cmd.stdout(default_stdio());
