@@ -445,7 +445,6 @@ impl Config {
         }
 
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
-        let mut args = args;
 
         let mut toolchains_path = home::rustup_home()?;
 
