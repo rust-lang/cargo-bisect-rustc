@@ -151,7 +151,7 @@ Assuming you aren't reading this too far in the future, the
 following should work:
 
 ```
-cargo-bisect-rustc --test-dir=foo \
+cargo bisect-rustc --test-dir=foo \
     --start=6323d9a45bdf0ac2a9319a6a558537e0a7e6abd1 \
     --end=866a713258915e6cbb212d135f751a6a8c9e1c0a
 ```
@@ -193,7 +193,7 @@ edition). Let's find where it was lost! Grab the ranges between where it was
 added and where we know it fails:
 
 ```
-cargo-bisect-rustc --prompt --test-dir=foo \
+cargo bisect-rustc --prompt --test-dir=foo \
     --start=ab93561b5fa54954159480ddc10bbb69f015e539 \
     --end=2c2e2c57dc2140cfb62a8abb9312b89f02c59f3c
 ```
@@ -233,7 +233,7 @@ cargo check 2>&1 | grep E0642
 And then run:
 
 ```
-cargo-bisect-rustc --script=./test.sh --test-dir=foo \
+cargo bisect-rustc --script=./test.sh --test-dir=foo \
     --start=ab93561b5fa54954159480ddc10bbb69f015e539 \
     --end=2c2e2c57dc2140cfb62a8abb9312b89f02c59f3c
 ```
