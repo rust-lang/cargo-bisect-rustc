@@ -501,8 +501,7 @@ fn download_tar_xz(
     let (response, mut bar) = download_progress(client, name, url)?;
     let response = TeeReader::new(response, &mut bar);
     let response = XzDecoder::new(response);
-    unarchive(response, dest).map_err(DownloadError::Archive)?;
-    Ok(())
+    unarchive(response, dest).map_err(DownloadError::Archive)
 }
 
 fn download_tar_gz(
@@ -514,8 +513,7 @@ fn download_tar_gz(
     let (response, mut bar) = download_progress(client, name, url)?;
     let response = TeeReader::new(response, &mut bar);
     let response = GzDecoder::new(response);
-    unarchive(response, dest).map_err(DownloadError::Archive)?;
-    Ok(())
+    unarchive(response, dest).map_err(DownloadError::Archive)
 }
 
 fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> {
