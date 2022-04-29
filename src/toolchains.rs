@@ -236,7 +236,7 @@ impl Toolchain {
     ///
     /// The main reason to call this (instead of `fs::remove_dir_all` directly)
     /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
-    pub(crate) fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
         let rustup_name = self.rustup_name();
 
         // Guard against destroying directories that this tool didn't create.
