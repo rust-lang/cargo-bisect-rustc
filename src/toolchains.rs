@@ -483,8 +483,7 @@ pub(crate) fn download_progress(
     let length = response
         .headers()
         .get(CONTENT_LENGTH)
-        .and_then(|c| c.to_str().ok())
-        .and_then(|c| c.parse().ok())
+        .and_then(|c| c.to_str().ok()?.parse().ok())
         .unwrap_or(0);
     let mut bar = ProgressBar::new(length);
     bar.set_units(Units::Bytes);
