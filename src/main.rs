@@ -849,53 +849,6 @@ impl Iterator for NightlyFinderIter {
     }
 }
 
-#[test]
-fn test_nightly_finder_iterator() {
-    let start_date = chrono::Date::from_utc(
-        chrono::naive::NaiveDate::from_ymd(2019, 01, 01),
-        chrono::Utc,
-    );
-
-    let mut iter = NightlyFinderIter::new(start_date);
-
-    assert_eq!(start_date - chrono::Duration::days(2), iter.next().unwrap());
-    assert_eq!(start_date - chrono::Duration::days(4), iter.next().unwrap());
-    assert_eq!(start_date - chrono::Duration::days(6), iter.next().unwrap());
-    assert_eq!(start_date - chrono::Duration::days(8), iter.next().unwrap());
-    assert_eq!(
-        start_date - chrono::Duration::days(15),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(22),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(29),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(36),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(43),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(50),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(64),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(78),
-        iter.next().unwrap()
-    );
-}
-
 fn install_and_test(
     t: &Toolchain,
     cfg: &Config,
@@ -1315,5 +1268,52 @@ mod tests {
         let start = chrono::Utc::now().date();
         let end = chrono::Utc::now().date().succ();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
+    }
+
+    #[test]
+    fn test_nightly_finder_iterator() {
+        let start_date = chrono::Date::from_utc(
+            chrono::naive::NaiveDate::from_ymd(2019, 01, 01),
+            chrono::Utc,
+        );
+
+        let mut iter = NightlyFinderIter::new(start_date);
+
+        assert_eq!(start_date - chrono::Duration::days(2), iter.next().unwrap());
+        assert_eq!(start_date - chrono::Duration::days(4), iter.next().unwrap());
+        assert_eq!(start_date - chrono::Duration::days(6), iter.next().unwrap());
+        assert_eq!(start_date - chrono::Duration::days(8), iter.next().unwrap());
+        assert_eq!(
+            start_date - chrono::Duration::days(15),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(22),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(29),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(36),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(43),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(50),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(64),
+            iter.next().unwrap()
+        );
+        assert_eq!(
+            start_date - chrono::Duration::days(78),
+            iter.next().unwrap()
+        );
     }
 }
