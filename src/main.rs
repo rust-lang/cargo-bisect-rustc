@@ -15,6 +15,8 @@ use reqwest::blocking::Client;
 use structopt::StructOpt;
 use tee::TeeReader;
 
+mod git;
+mod github;
 mod least_satisfying;
 mod repo_access;
 mod toolchains;
