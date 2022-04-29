@@ -77,9 +77,7 @@ fn get_repo() -> Result<RustcRepo, Error> {
             .arg(&origin_remote)
             .current_dir(path)
             .status()
-            .context(format!(
-                "expected `git` command-line executable to be installed"
-            ))?;
+            .context("expected `git` command-line executable to be installed".to_string())?;
         if !status.success() {
             bail!("git fetch failed exit status {}", status);
         }

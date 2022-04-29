@@ -501,8 +501,7 @@ impl Config {
             }
         }
 
-        let repo_access: Box<dyn RustRepositoryAccessor>;
-        repo_access = match args.access.as_deref() {
+        let repo_access: Box<dyn RustRepositoryAccessor> = match args.access.as_deref() {
             None | Some("checkout") => Box::new(AccessViaLocalGit),
             Some("github") => Box::new(AccessViaGithub),
             Some(other) => bail!("unknown access argument: {}", other),
@@ -606,10 +605,10 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
 // bisection entry point
 fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
     if cfg.is_commit {
-        let bisection_result = bisect_ci(&cfg, &client)?;
+        let bisection_result = bisect_ci(cfg, client)?;
         print_results(cfg, client, &bisection_result);
     } else {
-        let nightly_bisection_result = bisect_nightlies(&cfg, &client)?;
+        let nightly_bisection_result = bisect_nightlies(cfg, client)?;
         print_results(cfg, client, &nightly_bisection_result);
         let nightly_regression = &nightly_bisection_result.searched[nightly_bisection_result.found];
 
@@ -675,10 +674,10 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
 
     if toolchains[*found] == *toolchains.last().unwrap() {
         let t = &toolchains[*found];
-        let r = match t.install(&client, &dl_spec) {
+        let r = match t.install(client, dl_spec) {
             Ok(()) => {
-                let outcome = t.test(&cfg);
-                remove_toolchain(cfg, t, &dl_spec);
+                let outcome = t.test(cfg);
+                remove_toolchain(cfg, t, dl_spec);
                 // we want to fail, so a successful build doesn't satisfy us
                 match outcome {
                     TestOutcome::Baseline => Satisfies::No,
@@ -686,7 +685,7 @@ fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResu
                 }
             }
             Err(_) => {
-                let _ = t.remove(&dl_spec);
+                let _ = t.remove(dl_spec);
                 Satisfies::Unknown
             }
         };
@@ -899,21 +898,21 @@ fn install_and_test(
     client: &Client,
     dl_spec: &DownloadParams,
 ) -> Result<Satisfies, InstallError> {
-    match t.install(&client, &dl_spec) {
+    match t.install(client, dl_spec) {
         Ok(()) => {
-            let outcome = t.test(&cfg);
+            let outcome = t.test(cfg);
             // we want to fail, so a successful build doesn't satisfy us
             let r = match outcome {
                 TestOutcome::Baseline => Satisfies::No,
                 TestOutcome::Regressed => Satisfies::Yes,
             };
             eprintln!("RESULT: {}, ===> {}", t, r);
-            remove_toolchain(cfg, t, &dl_spec);
+            remove_toolchain(cfg, t, dl_spec);
             eprintln!();
             Ok(r)
         }
         Err(error) => {
-            remove_toolchain(cfg, t, &dl_spec);
+            remove_toolchain(cfg, t, dl_spec);
             Err(error)
         }
     }
@@ -925,8 +924,8 @@ fn bisect_to_regression(
     client: &Client,
     dl_spec: &DownloadParams,
 ) -> usize {
-    least_satisfying(&toolchains, |t| {
-        match install_and_test(&t, &cfg, &client, &dl_spec) {
+    least_satisfying(toolchains, |t| {
+        match install_and_test(t, cfg, client, dl_spec) {
             Ok(r) => r,
             Err(_) => Satisfies::Unknown,
         }
@@ -962,7 +961,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         bail!("cannot bisect nightlies with --alt: not supported");
     }
 
-    let dl_spec = DownloadParams::for_nightly(&cfg);
+    let dl_spec = DownloadParams::for_nightly(cfg);
 
     // before this date we didn't have -std packages
     let end_at = chrono::Date::from_utc(
@@ -1015,7 +1014,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
             );
         }
 
-        match install_and_test(&t, &cfg, &client, &dl_spec) {
+        match install_and_test(&t, cfg, client, &dl_spec) {
             Ok(r) => {
                 // If Satisfies::No, then the regression was not identified in this nightly.
                 // Break out of the loop and use this as the start date for the
@@ -1064,7 +1063,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     t_end.std_targets.sort();
     t_end.std_targets.dedup();
 
-    match install_and_test(&t_end, &cfg, &client, &dl_spec) {
+    match install_and_test(&t_end, cfg, client, &dl_spec) {
         Ok(r) => {
             // If Satisfies::No, then the regression was not identified in this nightly.
             // this is an error, abort with error message
@@ -1086,7 +1085,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         ToolchainSpec::Nightly { date: last_failure },
     );
 
-    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec);
+    let found = bisect_to_regression(&toolchains, cfg, client, &dl_spec);
 
     Ok(BisectionResult {
         dl_spec,
@@ -1172,7 +1171,7 @@ fn bisect_ci_via(
         )
     }
 
-    bisect_ci_in_commits(cfg, client, &start_sha, &end_sha, commits)
+    bisect_ci_in_commits(cfg, client, start_sha, &end_sha, commits)
 }
 
 fn bisect_ci_in_commits(
@@ -1194,7 +1193,7 @@ fn bisect_ci_in_commits(
         );
     }
 
-    if let Some(ref c) = commits.last() {
+    if let Some(c) = commits.last() {
         if end != "origin/master" && !c.sha.starts_with(end) {
             bail!("expected to end with {}, but ended with {}", end, c.sha);
         }
@@ -1222,7 +1221,7 @@ fn bisect_ci_in_commits(
 
     if !toolchains.is_empty() {
         // validate commit at start of range
-        match install_and_test(&toolchains[0], &cfg, &client, &dl_spec) {
+        match install_and_test(&toolchains[0], cfg, client, &dl_spec) {
             Ok(r) => {
                 // If Satisfies::Yes, then the commit at the beginning of the range
                 // has the regression, this is an error
@@ -1237,7 +1236,7 @@ fn bisect_ci_in_commits(
         }
 
         // validate commit at end of range
-        match install_and_test(&toolchains[toolchains.len() - 1], &cfg, &client, &dl_spec) {
+        match install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec) {
             Ok(r) => {
                 // If Satisfies::No, then the regression was not identified at the end of the
                 // commit range, this is an error
@@ -1252,7 +1251,7 @@ fn bisect_ci_in_commits(
         }
     }
 
-    let found = bisect_to_regression(&toolchains, &cfg, client, &dl_spec);
+    let found = bisect_to_regression(&toolchains, cfg, client, &dl_spec);
 
     Ok(BisectionResult {
         searched: toolchains,
