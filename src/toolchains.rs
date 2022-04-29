@@ -419,7 +419,7 @@ impl DownloadParams {
         Self::from_cfg_with_url_prefix(cfg, NIGHTLY_SERVER.to_string())
     }
 
-    pub(crate) fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
+    fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
         let mut components = Vec::new();
         components.push("rustc".to_string());
         if !cfg.args.without_cargo {
@@ -492,7 +492,7 @@ pub(crate) fn download_progress(
     Ok((response, bar))
 }
 
-pub(crate) fn download_tar_xz(
+fn download_tar_xz(
     client: &Client,
     name: &str,
     url: &str,
@@ -505,7 +505,7 @@ pub(crate) fn download_tar_xz(
     Ok(())
 }
 
-pub(crate) fn download_tar_gz(
+fn download_tar_gz(
     client: &Client,
     name: &str,
     url: &str,
@@ -518,7 +518,7 @@ pub(crate) fn download_tar_gz(
     Ok(())
 }
 
-pub(crate) fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> {
+fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> {
     for entry in Archive::new(r).entries().map_err(ArchiveError::Archive)? {
         let mut entry = entry.map_err(ArchiveError::Archive)?;
         let entry_path = entry.path().map_err(ArchiveError::Archive)?;
@@ -544,7 +544,7 @@ pub(crate) fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> 
     Ok(())
 }
 
-pub(crate) fn download_tarball(
+fn download_tarball(
     client: &Client,
     name: &str,
     url: &str,
