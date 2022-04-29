@@ -281,9 +281,7 @@ impl Toolchain {
             .map_err(InstallError::Download)?;
         }
 
-        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
-
-        Ok(())
+        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
     }
 
     pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
@@ -305,7 +303,6 @@ impl Toolchain {
 
         let dir = dl_params.install_dir.join(rustup_name);
         fs::remove_dir_all(&dir)?;
-
         Ok(())
     }
 
@@ -363,14 +360,12 @@ impl Toolchain {
         let must_capture_output = cfg.regress_on().must_process_stderr();
         let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
 
-        let default_stdio = || {
-            if must_capture_output {
-                Stdio::piped()
-            } else if emit_output {
-                Stdio::inherit()
-            } else {
-                Stdio::null()
-            }
+        let default_stdio = if must_capture_output {
+            Stdio::piped
+        } else if emit_output {
+            Stdio::inherit
+        } else {
+            Stdio::null
         };
 
         cmd.stdout(default_stdio());
@@ -553,8 +548,7 @@ pub(crate) fn download_tar_xz(
     let (response, mut bar) = download_progress(client, name, url)?;
     let response = TeeReader::new(response, &mut bar);
     let response = XzDecoder::new(response);
-    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)?;
-    Ok(())
+    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)
 }
 
 pub(crate) fn download_tar_gz(
@@ -567,8 +561,7 @@ pub(crate) fn download_tar_gz(
     let (response, mut bar) = download_progress(client, name, url)?;
     let response = TeeReader::new(response, &mut bar);
     let response = GzDecoder::new(response);
-    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)?;
-    Ok(())
+    unarchive(response, strip_prefix, dest).map_err(DownloadError::Archive)
 }
 
 pub(crate) fn unarchive<R: Read>(
