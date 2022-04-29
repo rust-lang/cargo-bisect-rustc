@@ -101,6 +101,13 @@ struct Opts {
     with_dev: bool,
 
     #[structopt(
+        short = "c",
+        long = "component",
+        help = "additional components to install"
+    )]
+    components: Vec<String>,
+
+    #[structopt(
         long = "test-dir",
         help = "Root directory for tests",
         default_value = ".",
