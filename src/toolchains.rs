@@ -193,7 +193,7 @@ impl Toolchain {
             .map(|component| {
                 if component == "rust-src" {
                     // rust-src is target-independent
-                    format!("rust-src-nightly")
+                    "rust-src-nightly".to_string()
                 } else {
                     format!("{}-nightly-{}", component, self.host)
                 }
@@ -420,8 +420,7 @@ impl DownloadParams {
     }
 
     fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
-        let mut components = Vec::new();
-        components.push("rustc".to_string());
+        let mut components = vec!["rustc".to_string()];
         if !cfg.args.without_cargo {
             components.push("cargo".to_string());
         }

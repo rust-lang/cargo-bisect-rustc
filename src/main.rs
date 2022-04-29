@@ -531,7 +531,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
     let current = Utc::now().date();
     match start.as_ref().zip(end.as_ref()) {
         // start date is after end date
-        Some((Bound::Date(start), Bound::Date(end))) if end < &start => {
+        Some((Bound::Date(start), Bound::Date(end))) if end < start => {
             bail!(
                 "end should be after start, got start: {} and end {}",
                 start,
