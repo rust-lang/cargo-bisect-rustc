@@ -809,10 +809,7 @@ fn bisect_to_regression(
     dl_spec: &DownloadParams,
 ) -> usize {
     least_satisfying(toolchains, |t| {
-        match install_and_test(t, cfg, client, dl_spec) {
-            Ok(r) => r,
-            Err(_) => Satisfies::Unknown,
-        }
+        install_and_test(t, cfg, client, dl_spec).unwrap_or(Satisfies::Unknown)
     })
 }
 
