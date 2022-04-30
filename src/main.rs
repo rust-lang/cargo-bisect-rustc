@@ -1204,43 +1204,10 @@ mod tests {
             chrono::Utc,
         );
 
-        let mut iter = NightlyFinderIter::new(start_date);
+        let iter = NightlyFinderIter::new(start_date);
 
-        assert_eq!(start_date - chrono::Duration::days(2), iter.next().unwrap());
-        assert_eq!(start_date - chrono::Duration::days(4), iter.next().unwrap());
-        assert_eq!(start_date - chrono::Duration::days(6), iter.next().unwrap());
-        assert_eq!(start_date - chrono::Duration::days(8), iter.next().unwrap());
-        assert_eq!(
-            start_date - chrono::Duration::days(15),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(22),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(29),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(36),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(43),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(50),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(64),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            start_date - chrono::Duration::days(78),
-            iter.next().unwrap()
-        );
+        for (date, i) in iter.zip([2, 4, 6, 8, 15, 22, 29, 36, 43, 50, 64, 78]) {
+            assert_eq!(start_date - chrono::Duration::days(i), date)
+        }
     }
 }
