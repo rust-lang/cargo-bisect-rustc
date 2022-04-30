@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic)]
+#![warn(clippy::cargo)]
+#![allow(clippy::semicolon_if_nothing_returned)]
+
 use std::env;
 use std::ffi::OsString;
 use std::fmt;
