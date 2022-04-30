@@ -66,7 +66,7 @@ const REPORT_HEADER: &str = "\
     ```")]
 struct Opts {
     #[structopt(
-        long = "regress",
+        long,
         default_value = "error",
         help = "Custom regression definition",
         long_help = "Custom regression definition \
@@ -74,18 +74,10 @@ struct Opts {
     )]
     regress: String,
 
-    #[structopt(
-        short = "a",
-        long = "alt",
-        help = "Download the alt build instead of normal build"
-    )]
+    #[structopt(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[structopt(
-        long = "host",
-        help = "Host triple for the compiler",
-        default_value = "unknown"
-    )]
+    #[structopt(long, help = "Host triple for the compiler", default_value = "unknown")]
     host: String,
 
     #[structopt(long = "target", help = "Cross-compilation target platform")]
@@ -94,10 +86,7 @@ struct Opts {
     #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[structopt(
-        long = "preserve-target",
-        help = "Preserve the target directory used for builds"
-    )]
+    #[structopt(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
     #[structopt(long = "with-src", help = "Download rust-src [default: no download]")]
@@ -106,30 +95,23 @@ struct Opts {
     #[structopt(long = "with-dev", help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
-    #[structopt(
-        short = "c",
-        long = "component",
-        help = "additional components to install"
-    )]
+    #[structopt(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
 
     #[structopt(
-        long = "test-dir",
+        long,
         help = "Root directory for tests",
         default_value = ".",
         parse(from_os_str)
     )]
     test_dir: PathBuf,
 
-    #[structopt(
-        long = "prompt",
-        help = "Manually evaluate for regression with prompts"
-    )]
+    #[structopt(long, help = "Manually evaluate for regression with prompts")]
     prompt: bool,
 
     #[structopt(
-        long = "timeout",
-        short = "t",
+        long,
+        short,
         help = "Assume failure after specified number of seconds (for bisecting hangs)"
     )]
     timeout: Option<usize>,
@@ -146,14 +128,14 @@ struct Opts {
     command_args: Vec<OsString>,
 
     #[structopt(
-        long = "start",
+        long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     start: Option<Bound>,
 
     #[structopt(
-        long = "end",
+        long,
         help = "Right bound for search (*with* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
@@ -162,32 +144,23 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[structopt(long = "by-commit", help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[structopt(
-        long = "access",
-        help = "How to access Rust git repository [github|checkout]"
-    )]
+    #[structopt(long, help = "How to access Rust git repository [github|checkout]")]
     access: Option<String>,
 
-    #[structopt(long = "install", help = "Install the given artifact")]
+    #[structopt(long, help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[structopt(
-        long = "force-install",
-        help = "Force installation over existing artifacts"
-    )]
+    #[structopt(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
     #[structopt(
-        long = "script",
+        long,
         help = "Script replacement for `cargo build` command",
         parse(from_os_str)
     )]
     script: Option<PathBuf>,
 
-    #[structopt(
-        long = "without-cargo",
-        help = "Do not install cargo [default: install cargo]"
-    )]
+    #[structopt(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 }
 
