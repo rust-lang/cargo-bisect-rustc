@@ -8,7 +8,7 @@ use std::fmt;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, DateTime, Utc};
@@ -385,52 +385,6 @@ impl RegressOn {
             RegressOn::ErrorStatus | RegressOn::SuccessStatus => false,
             RegressOn::NonCleanError | RegressOn::IceAlone | RegressOn::NotIce => true,
         }
-    }
-}
-
-// A simpler wrapper struct to make up for impoverished `Command` in libstd.
-struct CommandTemplate(Vec<String>);
-
-impl CommandTemplate {
-    fn new(strings: impl Iterator<Item = String>) -> Self {
-        CommandTemplate(strings.collect())
-    }
-
-    fn command(&self) -> Command {
-        assert!(!self.0.is_empty());
-        let mut cmd = Command::new(&self.0[0]);
-        for arg in &self.0[1..] {
-            cmd.arg(arg);
-        }
-        cmd
-    }
-
-    fn string(&self) -> String {
-        assert!(!self.0.is_empty());
-        let mut s = self.0[0].to_string();
-        for arg in &self.0[1..] {
-            s.push(' ');
-            s.push_str(arg);
-        }
-        s
-    }
-
-    fn status(&self) -> Result<process::ExitStatus, InstallError> {
-        self.command()
-            .status()
-            .map_err(|cause| InstallError::Subcommand {
-                command: self.string(),
-                cause,
-            })
-    }
-
-    fn output(&self) -> Result<process::Output, InstallError> {
-        self.command()
-            .output()
-            .map_err(|cause| InstallError::Subcommand {
-                command: self.string(),
-                cause,
-            })
     }
 }
 

@@ -1,7 +1,6 @@
 use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::iter;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 
@@ -22,7 +21,7 @@ use tee::TeeReader;
 use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
-use crate::{Config, CommandTemplate};
+use crate::Config;
 
 pub type GitDate = Date<Utc>;
 
@@ -41,11 +40,11 @@ pub(crate) enum InstallError {
     TempDir(#[cause] io::Error),
     #[fail(display = "Could not move tempdir into destination: {}", _0)]
     Move(#[cause] io::Error),
-    #[fail(display = "Could not run subcommand {}: {}", command, cause)]
+    #[fail(display = "Could not run subcommand {}: {}", cmd, err)]
     Subcommand {
-        command: String,
+        cmd: String,
         #[cause]
-        cause: io::Error,
+        err: io::Error,
     },
 }
 
@@ -149,12 +148,16 @@ impl Toolchain {
             debug!("installing (via link) {}", self);
 
             let nightly_path: String = {
-                let cmd = CommandTemplate::new(
-                    ["rustc", "--print", "sysroot"]
-                        .iter()
-                        .map(|s| (*s).to_string()),
-                );
-                let stdout = cmd.output()?.stdout;
+                let mut cmd = Command::new("rustc");
+                cmd.args(["--print", "sysroot"]);
+
+                let stdout = cmd
+                    .output()
+                    .map_err(|err| InstallError::Subcommand {
+                        cmd: format!("{cmd:?}"),
+                        err,
+                    })?
+                    .stdout;
                 let output = String::from_utf8_lossy(&stdout);
                 // the output should be the path, terminated by a newline
                 let mut path = output.to_string();
@@ -162,22 +165,20 @@ impl Toolchain {
                 assert_eq!(last, Some('\n'));
                 path
             };
-
-            let cmd = CommandTemplate::new(
-                ["rustup", "toolchain", "link"]
-                    .iter()
-                    .map(|s| (*s).to_string())
-                    .chain(iter::once(self.rustup_name()))
-                    .chain(iter::once(nightly_path)),
-            );
-            if cmd.status()?.success() {
-                return Ok(());
+            let mut cmd = Command::new("rustup");
+            cmd.args(["toolchain", "link", &self.rustup_name(), &nightly_path]);
+            let status = cmd.status().map_err(|err| InstallError::Subcommand {
+                cmd: format!("{cmd:?}"),
+                err,
+            })?;
+            return if status.success() {
+                Ok(())
             } else {
-                return Err(InstallError::Subcommand {
-                    command: cmd.string(),
-                    cause: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
-                });
-            }
+                Err(InstallError::Subcommand {
+                    cmd: format!("{cmd:?}"),
+                    err: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
+                })
+            };
         }
 
         debug!("installing via download {}", self);
