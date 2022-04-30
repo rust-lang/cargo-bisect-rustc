@@ -23,7 +23,7 @@ use crate::Config;
 
 pub type GitDate = Date<Utc>;
 
-const YYYY_MM_DD: &str = "%Y-%m-%d";
+pub const YYYY_MM_DD: &str = "%Y-%m-%d";
 
 pub(crate) const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";

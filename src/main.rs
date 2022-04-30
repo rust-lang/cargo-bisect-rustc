@@ -203,8 +203,6 @@ enum Bound {
 #[fail(display = "will never happen")]
 struct BoundParseError {}
 
-const YYYY_MM_DD: &str = "%Y-%m-%d";
-
 impl FromStr for Bound {
     type Err = BoundParseError;
     fn from_str(s: &str) -> Result<Bound, BoundParseError> {
