@@ -17,7 +17,6 @@ use failure::{bail, format_err, Fail, Error};
 use log::debug;
 use reqwest::blocking::Client;
 use structopt::StructOpt;
-use tee::TeeReader;
 
 mod git;
 mod github;
@@ -200,8 +199,7 @@ impl Bound {
                 eprintln!("fetching {}", url);
                 let client = Client::new();
                 let name = format!("nightly manifest {}", date_str);
-                let (response, mut bar) = download_progress(&client, &name, &url)?;
-                let mut response = TeeReader::new(response, &mut bar);
+                let mut response = download_progress(&client, &name, &url)?;
                 let mut commit = String::new();
                 response.read_to_string(&mut commit)?;
 

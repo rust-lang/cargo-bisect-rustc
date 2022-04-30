@@ -446,7 +446,7 @@ pub(crate) fn download_progress(
     client: &Client,
     name: &str,
     url: &str,
-) -> Result<(Response, ProgressBar<io::Stdout>), DownloadError> {
+) -> Result<TeeReader<Response, ProgressBar<io::Stdout>>, DownloadError> {
     debug!("downloading <{}>...", url);
 
     let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
@@ -465,9 +465,9 @@ pub(crate) fn download_progress(
         .unwrap_or(0);
     let mut bar = ProgressBar::new(length);
     bar.set_units(Units::Bytes);
-    bar.message(&format!("{}: ", name));
+    bar.message(&format!("{name}: "));
 
-    Ok((response, bar))
+    Ok(TeeReader::new(response, bar))
 }
 
 fn download_tar_xz(
@@ -476,9 +476,7 @@ fn download_tar_xz(
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    let (response, mut bar) = download_progress(client, name, url)?;
-    let response = TeeReader::new(response, &mut bar);
-    let response = XzDecoder::new(response);
+    let response = XzDecoder::new(download_progress(client, name, url)?);
     unarchive(response, dest).map_err(DownloadError::Archive)
 }
 
@@ -488,9 +486,7 @@ fn download_tar_gz(
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    let (response, mut bar) = download_progress(client, name, url)?;
-    let response = TeeReader::new(response, &mut bar);
-    let response = GzDecoder::new(response);
+    let response = GzDecoder::new(download_progress(client, name, url)?);
     unarchive(response, dest).map_err(DownloadError::Archive)
 }
 
