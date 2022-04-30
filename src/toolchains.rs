@@ -205,22 +205,22 @@ impl Toolchain {
             );
 
         for component in components {
-            if let Err(e) = download_tarball(
+            download_tarball(
                 client,
                 &component,
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, component),
                 tmpdir.path(),
-            ) {
-                match e {
-                    DownloadError::NotFound(url) => {
-                        return Err(InstallError::NotFound {
-                            url,
-                            spec: self.spec.clone(),
-                        })
+            )
+            .map_err(|e| {
+                if let DownloadError::NotFound(url) = e {
+                    InstallError::NotFound {
+                        url,
+                        spec: self.spec.clone(),
                     }
-                    _ => return Err(InstallError::Download(e)),
+                } else {
+                    InstallError::Download(e)
                 }
-            }
+            })?;
         }
 
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
