@@ -272,10 +272,8 @@ impl Config {
             status, stdout_utf8, stderr_utf8
         );
 
-        let saw_ice = || -> bool {
-            stderr_utf8.contains("error: internal compiler error")
-                || stderr_utf8.contains("thread 'rustc' has overflowed its stack")
-        };
+        let saw_ice = stderr_utf8.contains("error: internal compiler error")
+            || stderr_utf8.contains("thread 'rustc' has overflowed its stack");
 
         let input = (self.regress_on(), status.success());
         let result = match input {
@@ -284,14 +282,14 @@ impl Config {
             (RegressOn::SuccessStatus, true) => TestOutcome::Regressed,
             (RegressOn::SuccessStatus, false) => TestOutcome::Baseline,
             (RegressOn::IceAlone, _) => {
-                if saw_ice() {
+                if saw_ice {
                     TestOutcome::Regressed
                 } else {
                     TestOutcome::Baseline
                 }
             }
             (RegressOn::NotIce, _) => {
-                if saw_ice() {
+                if saw_ice {
                     TestOutcome::Baseline
                 } else {
                     TestOutcome::Regressed
@@ -300,7 +298,7 @@ impl Config {
 
             (RegressOn::NonCleanError, true) => TestOutcome::Regressed,
             (RegressOn::NonCleanError, false) => {
-                if saw_ice() {
+                if saw_ice {
                     TestOutcome::Regressed
                 } else {
                     TestOutcome::Baseline
