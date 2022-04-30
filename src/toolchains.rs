@@ -89,7 +89,7 @@ impl Toolchain {
         rustc_version::version_meta()
             .ok()
             .filter(|v| v.channel == Channel::Nightly)
-            .and_then(|v| NaiveDate::parse_from_str(&v.commit_date?, "%Y-%m-%d").ok())
+            .and_then(|v| NaiveDate::parse_from_str(&v.commit_date?, YYYY_MM_DD).ok())
             .map(|date| Date::from_utc(date, Utc))
     }
 
