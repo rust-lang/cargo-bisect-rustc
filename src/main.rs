@@ -947,18 +947,13 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     t_end.std_targets.sort();
     t_end.std_targets.dedup();
 
-    match install_and_test(&t_end, cfg, client, &dl_spec) {
-        Ok(r) => {
-            // If Satisfies::No, then the regression was not identified in this nightly.
-            // this is an error, abort with error message
-            if r == Satisfies::No {
-                bail!(
-                    "the end of the range ({}) does not reproduce the regression",
-                    t_end
-                );
-            }
-        }
-        Err(error) => return Err(error.into()),
+    let result_nightly = install_and_test(&t_end, cfg, client, &dl_spec)?;
+    // The regression was not identified in this nightly.
+    if result_nightly == Satisfies::No {
+        bail!(
+            "the end of the range ({}) does not reproduce the regression",
+            t_end
+        );
     }
 
     let toolchains = toolchains_between(
@@ -1105,33 +1100,22 @@ fn bisect_ci_in_commits(
 
     if !toolchains.is_empty() {
         // validate commit at start of range
-        match install_and_test(&toolchains[0], cfg, client, &dl_spec) {
-            Ok(r) => {
-                // If Satisfies::Yes, then the commit at the beginning of the range
-                // has the regression, this is an error
-                if r == Satisfies::Yes {
-                    bail!(
-                        "the commit at the start of the range ({}) includes the regression",
-                        &toolchains[0]
-                    );
-                }
-            }
-            Err(error) => return Err(error.into()),
+        let start_range_result = install_and_test(&toolchains[0], cfg, client, &dl_spec)?;
+        if start_range_result == Satisfies::Yes {
+            bail!(
+                "the commit at the start of the range ({}) includes the regression",
+                &toolchains[0]
+            );
         }
 
         // validate commit at end of range
-        match install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec) {
-            Ok(r) => {
-                // If Satisfies::No, then the regression was not identified at the end of the
-                // commit range, this is an error
-                if r == Satisfies::No {
-                    bail!(
-                        "the commit at the end of the range ({}) does not reproduce the regression",
-                        &toolchains[toolchains.len() - 1]
-                    );
-                }
-            }
-            Err(error) => return Err(error.into()),
+        let end_range_result =
+            install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec)?;
+        if end_range_result == Satisfies::No {
+            bail!(
+                "the commit at the end of the range ({}) does not reproduce the regression",
+                &toolchains[toolchains.len() - 1]
+            );
         }
     }
 
