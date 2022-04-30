@@ -548,9 +548,8 @@ fn download_tarball(
     dest: &Path,
 ) -> Result<(), DownloadError> {
     match download_tar_xz(client, name, &format!("{}.xz", url,), dest) {
-        Ok(()) => return Ok(()),
-        Err(DownloadError::NotFound { .. }) => {}
-        Err(e) => return Err(e),
+        Err(DownloadError::NotFound { .. }) => download_tar_gz(client, name, &format!("{}.gz", url,), dest),
+        res => res
     }
-    download_tar_gz(client, name, &format!("{}.gz", url,), dest)
+    
 }
