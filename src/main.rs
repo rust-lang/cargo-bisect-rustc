@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process;
 use std::str::FromStr;
 
-use chrono::{Date, DateTime, Utc};
+use chrono::{Date, DateTime,Duration,  NaiveDate, Utc};
 use colored::*;
 use failure::{bail, format_err, Fail, Error};
 use log::debug;
@@ -178,7 +178,7 @@ struct BoundParseError {}
 impl FromStr for Bound {
     type Err = BoundParseError;
     fn from_str(s: &str) -> Result<Bound, BoundParseError> {
-        match chrono::NaiveDate::parse_from_str(s, YYYY_MM_DD) {
+        match NaiveDate::parse_from_str(s, YYYY_MM_DD) {
             Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
             Err(_) => Ok(Bound::Commit(s.to_string())),
         }
@@ -771,7 +771,7 @@ impl Iterator for NightlyFinderIter {
             14
         };
 
-        self.current_date = self.current_date - chrono::Duration::days(jump_length);
+        self.current_date = self.current_date - Duration::days(jump_length);
         Some(self.current_date)
     }
 }
@@ -813,7 +813,7 @@ fn bisect_to_regression(
     })
 }
 
-fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
+fn get_start_date(cfg: &Config) -> Date<Utc> {
     if let Some(Bound::Date(date)) = cfg.args.start {
         date
     } else {
@@ -821,19 +821,18 @@ fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
     }
 }
 
-fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
+fn get_end_date(cfg: &Config) -> Date<Utc> {
     if let Some(Bound::Date(date)) = cfg.args.end {
         date
     } else if let Some(date) = Toolchain::default_nightly() {
         date
     } else {
-        chrono::Utc::today()
+        Utc::today()
     }
 }
 
-fn date_is_future(test_date: chrono::Date<Utc>) -> bool {
-    let current_date = chrono::Utc::today();
-    test_date > current_date
+fn date_is_future(test_date: Date<Utc>) -> bool {
+    test_date > Utc::today()
 }
 
 // nightlies branch of bisect execution
@@ -845,9 +844,9 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let dl_spec = DownloadParams::for_nightly(cfg);
 
     // before this date we didn't have -std packages
-    let end_at = chrono::Date::from_utc(
-        chrono::naive::NaiveDate::from_ymd(2015, 10, 20),
-        chrono::Utc,
+    let end_at = Date::from_utc(
+        NaiveDate::from_ymd(2015, 10, 20),
+        Utc,
     );
     let mut first_success = None;
 
@@ -1180,15 +1179,15 @@ mod tests {
 
     #[test]
     fn test_nightly_finder_iterator() {
-        let start_date = chrono::Date::from_utc(
-            chrono::naive::NaiveDate::from_ymd(2019, 01, 01),
-            chrono::Utc,
+        let start_date = Date::from_utc(
+            NaiveDate::from_ymd(2019, 01, 01),
+            Utc,
         );
 
         let iter = NightlyFinderIter::new(start_date);
 
         for (date, i) in iter.zip([2, 4, 6, 8, 15, 22, 29, 36, 43, 50, 64, 78]) {
-            assert_eq!(start_date - chrono::Duration::days(i), date)
+            assert_eq!(start_date - Duration::days(i), date)
         }
     }
 }
