@@ -453,7 +453,7 @@ impl Config {
 
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
     // current UTC date
-    let current = Utc::now().date();
+    let current = Utc::today();
     match start.as_ref().zip(end.as_ref()) {
         // start date is after end date
         Some((Bound::Date(start), Bound::Date(end))) if end < start => {
@@ -827,12 +827,12 @@ fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
     } else if let Some(date) = Toolchain::default_nightly() {
         date
     } else {
-        chrono::Utc::now().date()
+        chrono::Utc::today()
     }
 }
 
 fn date_is_future(test_date: chrono::Date<Utc>) -> bool {
-    let current_date = chrono::Utc::now().date();
+    let current_date = chrono::Utc::today();
     test_date > current_date
 }
 
@@ -1152,29 +1152,29 @@ mod tests {
     // Start and end date validations
     #[test]
     fn test_check_bounds_valid_bounds() {
-        let date1 = chrono::Utc::now().date().pred();
-        let date2 = chrono::Utc::now().date().pred();
+        let date1 = chrono::Utc::today().pred();
+        let date2 = chrono::Utc::today().pred();
         assert!(check_bounds(&Some(Bound::Date(date1)), &Some(Bound::Date(date2))).is_ok());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_end() {
-        let start = chrono::Utc::now().date();
-        let end = chrono::Utc::now().date().pred();
+        let start = chrono::Utc::today();
+        let end = chrono::Utc::today().pred();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_current() {
-        let start = chrono::Utc::now().date().succ();
-        let end = chrono::Utc::now().date();
+        let start = chrono::Utc::today().succ();
+        let end = chrono::Utc::today();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_end_after_current() {
-        let start = chrono::Utc::now().date();
-        let end = chrono::Utc::now().date().succ();
+        let start = chrono::Utc::today();
+        let end = chrono::Utc::today().succ();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
