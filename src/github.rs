@@ -74,7 +74,7 @@ pub(crate) struct CommitsQuery<'a> {
 /// Returns the bors merge commits between the two specified boundaries
 /// (boundaries inclusive).
 
-impl<'a> CommitsQuery<'a> {
+impl CommitsQuery<'_> {
     pub fn get_commits(&self) -> Result<Vec<Commit>, Error> {
         get_commits(*self)
     }
@@ -97,7 +97,7 @@ struct CommitDetailsUrl<'a> {
     sha: &'a str,
 }
 
-impl<'a> ToUrl for CommitsUrl<'a> {
+impl ToUrl for CommitsUrl<'_> {
     fn url(&self) -> String {
         format!(
             "https://api.github.com/repos/{OWNER}/{REPO}/commits\
@@ -114,7 +114,7 @@ impl<'a> ToUrl for CommitsUrl<'a> {
     }
 }
 
-impl<'a> ToUrl for CommitDetailsUrl<'a> {
+impl ToUrl for CommitDetailsUrl<'_> {
     fn url(&self) -> String {
         // "origin/master" is set as `sha` when there is no `--end=` definition
         // specified on the command line.  We define the GitHub master branch
