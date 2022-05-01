@@ -896,7 +896,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 // If Satisfies::No, then the regression was not identified in this nightly.
                 // Break out of the loop and use this as the start date for the
                 // bisection range
-                if let Satisfies::No = r {
+                if r == Satisfies::No {
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
