@@ -79,19 +79,19 @@ struct Opts {
     #[structopt(long, help = "Host triple for the compiler", default_value = "unknown")]
     host: String,
 
-    #[structopt(long = "target", help = "Cross-compilation target platform")]
+    #[structopt(long, help = "Cross-compilation target platform")]
     target: Option<String>,
 
-    #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
+    #[structopt(long, help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
     #[structopt(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
-    #[structopt(long = "with-src", help = "Download rust-src [default: no download]")]
+    #[structopt(long, help = "Download rust-src [default: no download]")]
     with_src: bool,
 
-    #[structopt(long = "with-dev", help = "Download rustc-dev [default: no download]")]
+    #[structopt(long, help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
     #[structopt(short, long = "component", help = "additional components to install")]
@@ -115,7 +115,7 @@ struct Opts {
     )]
     timeout: Option<usize>,
 
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    #[structopt(long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
     #[structopt(
@@ -140,7 +140,7 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     end: Option<Bound>,
 
-    #[structopt(long = "by-commit", help = "Bisect via commit artifacts")]
+    #[structopt(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
     #[structopt(long, help = "How to access Rust git repository [github|checkout]")]
