@@ -156,24 +156,21 @@ fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
         let response: Response = client.get(&url).send()?;
 
         let action = parse_paged_elems(response, |elem: GithubCommitElem| {
-            let date = match elem.date() {
-                Ok(date) => date,
-                Err(err) => return Loop::Err(err.into()),
-            };
+            let date = elem.date()?;
             let sha = elem.sha.clone();
             let summary = elem.commit.message;
             let commit = Commit { sha, date, summary };
             commits.push(commit);
 
-            if elem.sha == q.earliest_sha {
+            Ok(if elem.sha == q.earliest_sha {
                 eprintln!(
                     "ending github query because we found starting sha: {}",
                     elem.sha
                 );
-                return Loop::Break;
-            }
-
-            Loop::Next
+                Loop::Break
+            } else {
+                Loop::Next
+            })
         })?;
 
         if let Loop::Break = action {
@@ -191,19 +188,16 @@ fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
     Ok(commits)
 }
 
-enum Loop<E> {
+enum Loop {
     Break,
     Next,
-    Err(E),
 }
-enum Void {}
 
-fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(
+fn parse_paged_elems(
     response: Response,
-    mut k: impl FnMut(Elem) -> Loop<Error>,
-) -> Result<Loop<Void>, Error> {
-    // parse the JSON into an array of the expected Elem type
-    let elems: Vec<Elem> = response.json()?;
+    mut k: impl FnMut(GithubCommitElem) -> Result<Loop, Error>,
+) -> Result<Loop, Error> {
+    let elems: Vec<GithubCommitElem> = response.json()?;
 
     if elems.is_empty() {
         // we've run out of useful pages to lookup
@@ -211,12 +205,11 @@ fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(
     }
 
     for elem in elems.into_iter() {
-        let act = k(elem);
+        let act = k(elem)?;
 
         // the callback will tell us if we should terminate loop early (e.g. due to matching `sha`)
         match act {
             Loop::Break => return Ok(Loop::Break),
-            Loop::Err(e) => return Err(e),
             Loop::Next => continue,
         }
     }
