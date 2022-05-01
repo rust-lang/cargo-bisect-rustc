@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process;
 use std::str::FromStr;
 
-use chrono::{Date, DateTime,Duration,  NaiveDate, Utc};
+use chrono::{Date, Duration, NaiveDate, Utc};
 use colored::*;
 use failure::{bail, format_err, Fail, Error};
 use log::debug;
@@ -31,7 +31,7 @@ use crate::toolchains::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub sha: String,
-    pub date: DateTime<Utc>,
+    pub date: GitDate,
     pub summary: String,
 }
 
@@ -844,10 +844,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let dl_spec = DownloadParams::for_nightly(cfg);
 
     // before this date we didn't have -std packages
-    let end_at = Date::from_utc(
-        NaiveDate::from_ymd(2015, 10, 20),
-        Utc,
-    );
+    let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
     let mut first_success = None;
 
     let mut nightly_date = get_start_date(cfg);
@@ -1041,7 +1038,7 @@ fn bisect_ci_via(
         eprintln!(
             "  commit[{}] {}: {}",
             j,
-            commit.date.date(),
+            commit.date,
             commit.summary.split('\n').next().unwrap()
         )
     }
@@ -1057,8 +1054,7 @@ fn bisect_ci_in_commits(
     mut commits: Vec<Commit>,
 ) -> Result<BisectionResult, Error> {
     let dl_spec = DownloadParams::for_ci(cfg);
-    let now = chrono::Utc::now();
-    commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
+    commits.retain(|c| Utc::today() - c.date < Duration::days(167));
 
     if commits.is_empty() {
         bail!(
@@ -1179,10 +1175,7 @@ mod tests {
 
     #[test]
     fn test_nightly_finder_iterator() {
-        let start_date = Date::from_utc(
-            NaiveDate::from_ymd(2019, 01, 01),
-            Utc,
-        );
+        let start_date = Date::from_utc(NaiveDate::from_ymd(2019, 01, 01), Utc);
 
         let iter = NightlyFinderIter::new(start_date);
 

@@ -1,8 +1,8 @@
-use failure::Error;
+use failure::{Error, format_err};
 use reqwest::{self, blocking::Client, blocking::Response};
 use serde::{Deserialize, Serialize};
 
-use crate::Commit;
+use crate::{Commit, GitDate, parse_to_utc_date};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GithubCommitComparison {
@@ -26,11 +26,12 @@ struct GithubAuthor {
     name: String,
 }
 
-type GitDate = chrono::DateTime<chrono::Utc>;
-
 impl GithubCommitElem {
     fn date(&self) -> Result<GitDate, Error> {
-        Ok(self.commit.committer.date.parse()?)
+        let (date_str, _) = self.commit.committer.date.split_once("T").ok_or_else(|| {
+            format_err!("commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z")
+        })?;
+        Ok(parse_to_utc_date(date_str)?)
     }
 
     fn git_commit(self) -> Result<Commit, Error> {
@@ -155,7 +156,7 @@ fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
         let response: Response = client.get(&url).send()?;
 
         let action = parse_paged_elems(response, |elem: GithubCommitElem| {
-            let date: chrono::DateTime<chrono::Utc> = match elem.commit.committer.date.parse() {
+            let date = match elem.date() {
                 Ok(date) => date,
                 Err(err) => return Loop::Err(err.into()),
             };
@@ -222,4 +223,19 @@ fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(
 
     // by default, we keep searching on next page from github.
     Ok(Loop::Next)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_github() {
+        let c = get_commit("25674202bb7415e0c0ecd07856749cfb7f591be6").unwrap();
+        let expected_c = Commit { sha: "25674202bb7415e0c0ecd07856749cfb7f591be6".to_string(), 
+                                date: parse_to_utc_date("2022-05-04").unwrap(), 
+                                summary: "Auto merge of #96695 - JohnTitor:rollup-oo4fc1h, r=JohnTitor\n\nRollup of 6 pull requests\n\nSuccessful merges:\n\n - #96597 (openbsd: unbreak build on native platform)\n - #96662 (Fix typo in lint levels doc)\n - #96668 (Fix flaky rustdoc-ui test because it did not replace time result)\n - #96679 (Quick fix for #96223.)\n - #96684 (Update `ProjectionElem::Downcast` documentation)\n - #96686 (Add some TAIT-related tests)\n\nFailed merges:\n\nr? `@ghost`\n`@rustbot` modify labels: rollup".to_string()
+                            };
+        assert_eq!(c, expected_c)
+    }
 }

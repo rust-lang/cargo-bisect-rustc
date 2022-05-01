@@ -20,7 +20,7 @@ impl Commit {
     fn from_git2_commit(commit: &mut Git2Commit<'_>) -> Self {
         Commit {
             sha: commit.id().to_string(),
-            date: Utc.timestamp(commit.time().seconds(), 0),
+            date: Utc.timestamp(commit.time().seconds(), 0).date(),
             summary: String::from_utf8_lossy(commit.summary_bytes().unwrap()).to_string(),
         }
     }

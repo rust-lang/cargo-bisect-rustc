@@ -89,8 +89,7 @@ impl Toolchain {
         rustc_version::version_meta()
             .ok()
             .filter(|v| v.channel == Channel::Nightly)
-            .and_then(|v| NaiveDate::parse_from_str(&v.commit_date?, YYYY_MM_DD).ok())
-            .map(|date| Date::from_utc(date, Utc))
+            .and_then(|v| parse_to_utc_date(&v.commit_date?).ok())
     }
 
     pub(crate) fn is_current_nightly(&self) -> bool {
@@ -350,6 +349,10 @@ impl Toolchain {
 
         outcome
     }
+}
+
+pub fn parse_to_utc_date(s: &str) -> chrono::ParseResult<GitDate> {
+    NaiveDate::parse_from_str(s, YYYY_MM_DD).map(|date| Date::from_utc(date, Utc))
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

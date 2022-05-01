@@ -5,9 +5,7 @@ pub(crate) trait RustRepositoryAccessor {
     fn bound_to_date(&self, bound: Bound) -> Result<GitDate, Error> {
         match bound {
             Bound::Date(date) => Ok(date),
-            Bound::Commit(ref commit_ref) => {
-                self.commit(commit_ref).map(|commit| commit.date.date())
-            }
+            Bound::Commit(ref commit_ref) => self.commit(commit_ref).map(|commit| commit.date),
         }
     }
 
