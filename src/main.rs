@@ -12,7 +12,7 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
-use colored::*;
+use colored::Colorize;
 use failure::{bail, format_err, Fail, Error};
 use log::debug;
 use reqwest::blocking::Client;
@@ -26,7 +26,10 @@ mod toolchains;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
-use crate::toolchains::*;
+use crate::toolchains::{
+    DownloadParams, InstallError, NIGHTLY_SERVER, TestOutcome, Toolchain, ToolchainSpec,
+    YYYY_MM_DD, download_progress, parse_to_utc_date,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
@@ -406,13 +409,12 @@ impl Config {
         }
 
         let is_commit = match (args.start.clone(), args.end.clone()) {
-            (Some(Bound::Commit(_)), Some(Bound::Commit(_)))
-            | (None, Some(Bound::Commit(_)))
+            (Some(Bound::Commit(_)) | None, Some(Bound::Commit(_)))
             | (Some(Bound::Commit(_)), None) => Some(true),
 
-            (Some(Bound::Date(_)), Some(Bound::Date(_)))
-            | (None, Some(Bound::Date(_)))
-            | (Some(Bound::Date(_)), None) => Some(false),
+            (Some(Bound::Date(_)) | None, Some(Bound::Date(_))) | (Some(Bound::Date(_)), None) => {
+                Some(false)
+            }
 
             (None, None) => None,
 

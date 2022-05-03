@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 
 use chrono::{Date, NaiveDate, Utc};
-use colored::*;
+use colored::Colorize;
 use dialoguer::Select;
 use failure::{Fail, Error};
 use flate2::read::GzDecoder;

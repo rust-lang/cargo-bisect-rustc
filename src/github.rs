@@ -204,7 +204,7 @@ fn parse_paged_elems(
         return Ok(Loop::Break);
     }
 
-    for elem in elems.into_iter() {
+    for elem in elems {
         let act = k(elem)?;
 
         // the callback will tell us if we should terminate loop early (e.g. due to matching `sha`)
