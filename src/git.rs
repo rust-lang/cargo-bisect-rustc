@@ -8,7 +8,7 @@ use std::ops::Deref;
 use std::path::Path;
 
 use chrono::{TimeZone, Utc};
-use anyhow::{bail, Error, Context};
+use anyhow::{bail, Context};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;
@@ -39,7 +39,7 @@ impl Deref for RustcRepo {
     }
 }
 
-fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> Result<Git2Commit<'rev>, Error> {
+fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> anyhow::Result<Git2Commit<'rev>> {
     let revision = repo.revparse_single(rev)?;
 
     // Find the merge-base between the revision and master.
@@ -61,8 +61,8 @@ fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> Result<Git2Commit<'rev>
     bail!("Could not find a commit for revision specifier '{}'", rev)
 }
 
-fn get_repo() -> Result<RustcRepo, Error> {
-    fn open(path: &Path) -> Result<(Repository, String), Error> {
+fn get_repo() -> anyhow::Result<RustcRepo> {
+    fn open(path: &Path) -> anyhow::Result<(Repository, String)> {
         eprintln!("opening existing repository at {:?}", path);
         let repo = Repository::open(path)?;
 
@@ -104,7 +104,7 @@ fn get_repo() -> Result<RustcRepo, Error> {
     })
 }
 
-fn find_origin_remote(repo: &Repository) -> Result<String, Error> {
+fn find_origin_remote(repo: &Repository) -> anyhow::Result<String> {
     repo.remotes()?
         .iter()
         .filter_map(|name| name.and_then(|name| repo.find_remote(name).ok()))
@@ -120,7 +120,7 @@ Try adding a remote pointing to `{}` in the rust repository at `{}`.",
         })
 }
 
-pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
+pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
     let repo = get_repo()?;
     let mut rev = lookup_rev(&repo, sha)?;
     Ok(Commit::from_git2_commit(&mut rev))
@@ -128,7 +128,7 @@ pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
 
 /// Returns the bors merge commits between the two specified boundaries
 /// (boundaries inclusive).
-pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<Commit>, Error> {
+pub fn get_commits_between(first_commit: &str, last_commit: &str) -> anyhow::Result<Vec<Commit>> {
     let repo = get_repo()?;
     eprintln!("looking up first commit");
     let mut first = lookup_rev(&repo, first_commit)?;
@@ -137,7 +137,7 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> Result<Vec<
 
     // Sanity check -- our algorithm below only works reliably if the
     // two commits are merge commits made by bors
-    let assert_by_bors = |c: &Git2Commit<'_>| -> Result<(), Error> {
+    let assert_by_bors = |c: &Git2Commit<'_>| -> anyhow::Result<()> {
         match c.author().name() {
             Some("bors") => Ok(()),
             Some(author) => bail!("Expected author {} to be bors for {}.\n Make sure specified commits are on the master branch!", author, c.id()),
