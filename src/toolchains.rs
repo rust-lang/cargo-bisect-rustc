@@ -89,7 +89,8 @@ impl Toolchain {
         rustc_version::version_meta()
             .ok()
             .filter(|v| v.channel == Channel::Nightly)
-            .and_then(|v| parse_to_utc_date(&v.commit_date?).ok())
+            // rustc commit date is off-by-one, see #112
+            .and_then(|v| parse_to_utc_date(&v.commit_date?).ok().map(|d| d.succ()))
     }
 
     pub(crate) fn is_current_nightly(&self) -> bool {
