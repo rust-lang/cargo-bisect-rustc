@@ -77,7 +77,56 @@ pub(crate) struct CommitsQuery<'a> {
 
 impl CommitsQuery<'_> {
     pub fn get_commits(&self) -> Result<Vec<Commit>, Error> {
-        get_commits(*self)
+        // build up commit sequence, by feeding in `sha` as the starting point, and
+        // working way backwards to max(`self.since_date`, `self.earliest_sha`).
+        let mut commits = Vec::new();
+
+        // focus on Pull Request merges, all authored and committed by bors.
+        let author = "bors";
+
+        let client = Client::builder().default_headers(headers()?).build()?;
+        for page in 1.. {
+            let url = CommitsUrl {
+                page,
+                author,
+                since: self.since_date,
+                sha: self.most_recent_sha,
+            }
+            .url();
+
+            let response: Response = client.get(&url).send()?;
+
+            let action = parse_paged_elems(response, |elem: GithubCommitElem| {
+                let date = elem.date()?;
+                let sha = elem.sha.clone();
+                let summary = elem.commit.message;
+                let commit = Commit { sha, date, summary };
+                commits.push(commit);
+
+                Ok(if elem.sha == self.earliest_sha {
+                    eprintln!(
+                        "ending github query because we found starting sha: {}",
+                        elem.sha
+                    );
+                    Loop::Break
+                } else {
+                    Loop::Next
+                })
+            })?;
+
+            if let Loop::Break = action {
+                break;
+            }
+        }
+
+        eprintln!(
+            "get_commits_between returning commits, len: {}",
+            commits.len()
+        );
+
+        // reverse to obtain chronological order
+        commits.reverse();
+        Ok(commits)
     }
 }
 
@@ -133,59 +182,6 @@ impl ToUrl for CommitDetailsUrl<'_> {
             REF = reference
         )
     }
-}
-
-fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
-    // build up commit sequence, by feeding in `sha` as the starting point, and
-    // working way backwards to max(`q.since_date`, `q.earliest_sha`).
-    let mut commits = Vec::new();
-
-    // focus on Pull Request merges, all authored and committed by bors.
-    let author = "bors";
-
-    let client = Client::builder().default_headers(headers()?).build()?;
-    for page in 1.. {
-        let url = CommitsUrl {
-            page,
-            author,
-            since: q.since_date,
-            sha: q.most_recent_sha,
-        }
-        .url();
-
-        let response: Response = client.get(&url).send()?;
-
-        let action = parse_paged_elems(response, |elem: GithubCommitElem| {
-            let date = elem.date()?;
-            let sha = elem.sha.clone();
-            let summary = elem.commit.message;
-            let commit = Commit { sha, date, summary };
-            commits.push(commit);
-
-            Ok(if elem.sha == q.earliest_sha {
-                eprintln!(
-                    "ending github query because we found starting sha: {}",
-                    elem.sha
-                );
-                Loop::Break
-            } else {
-                Loop::Next
-            })
-        })?;
-
-        if let Loop::Break = action {
-            break;
-        }
-    }
-
-    eprintln!(
-        "get_commits_between returning commits, len: {}",
-        commits.len()
-    );
-
-    // reverse to obtain chronological order
-    commits.reverse();
-    Ok(commits)
 }
 
 enum Loop {
