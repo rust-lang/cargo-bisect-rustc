@@ -15,7 +15,7 @@ use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
 use colored::Colorize;
-use anyhow::{bail, Error, Context};
+use anyhow::{bail, Context};
 use log::debug;
 use reqwest::blocking::Client;
 use structopt::StructOpt;
@@ -192,7 +192,7 @@ impl FromStr for Bound {
 }
 
 impl Bound {
-    fn sha(&self) -> Result<String, Error> {
+    fn sha(&self) -> anyhow::Result<String> {
         match self {
             Bound::Commit(commit) => Ok(commit.clone()),
             Bound::Date(date) => {
@@ -216,7 +216,7 @@ impl Bound {
         }
     }
 
-    fn as_commit(&self) -> Result<Self, Error> {
+    fn as_commit(&self) -> anyhow::Result<Self> {
         self.sha().map(Bound::Commit)
     }
 }
@@ -365,7 +365,7 @@ struct Config {
 }
 
 impl Config {
-    fn from_args(mut args: Opts) -> Result<Config, Error> {
+    fn from_args(mut args: Opts) -> anyhow::Result<Config> {
         if args.host == "unknown" {
             if let Some(host) = option_env!("HOST") {
                 args.host = host.to_string();
@@ -448,7 +448,7 @@ impl Config {
     }
 }
 
-fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
+fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()> {
     // current UTC date
     let current = Utc::today();
     match start.as_ref().zip(end.as_ref()) {
@@ -481,7 +481,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
 }
 
 // Application entry point
-fn run() -> Result<(), Error> {
+fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
     let args = env::args_os().filter(|a| a != "bisect-rustc");
     let args = Opts::from_iter(args);
@@ -497,7 +497,7 @@ fn run() -> Result<(), Error> {
     }
 }
 
-fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
+fn install(cfg: &Config, client: &Client, bound: &Bound) -> anyhow::Result<()> {
     match *bound {
         Bound::Commit(ref sha) => {
             let sha = cfg.repo_access.commit(sha)?.sha;
@@ -531,7 +531,7 @@ fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
 }
 
 // bisection entry point
-fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
+fn bisect(cfg: &Config, client: &Client) -> anyhow::Result<()> {
     if cfg.is_commit {
         let bisection_result = bisect_ci(cfg, client)?;
         print_results(cfg, client, &bisection_result);
@@ -833,7 +833,7 @@ fn date_is_future(test_date: Date<Utc>) -> bool {
 }
 
 // nightlies branch of bisect execution
-fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
+fn bisect_nightlies(cfg: &Config, client: &Client) -> anyhow::Result<BisectionResult> {
     if cfg.args.alt {
         bail!("cannot bisect nightlies with --alt: not supported");
     }
@@ -986,7 +986,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 }
 
 // CI branch of bisect execution
-fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
+fn bisect_ci(cfg: &Config, client: &Client) -> anyhow::Result<BisectionResult> {
     eprintln!("bisecting ci builds");
     let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
         sha
@@ -1011,7 +1011,7 @@ fn bisect_ci_via(
     access: &dyn RustRepositoryAccessor,
     start_sha: &str,
     end_ref: &str,
-) -> Result<BisectionResult, Error> {
+) -> anyhow::Result<BisectionResult> {
     let end_sha = access.commit(end_ref)?.sha;
     let commits = access.commits(start_sha, &end_sha)?;
 
@@ -1046,7 +1046,7 @@ fn bisect_ci_in_commits(
     start: &str,
     end: &str,
     mut commits: Vec<Commit>,
-) -> Result<BisectionResult, Error> {
+) -> anyhow::Result<BisectionResult> {
     let dl_spec = DownloadParams::for_ci(cfg);
     commits.retain(|c| Utc::today() - c.date < Duration::days(167));
 
