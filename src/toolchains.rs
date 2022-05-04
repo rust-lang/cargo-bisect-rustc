@@ -7,7 +7,7 @@ use std::process::{self, Command, Stdio};
 use chrono::{Date, NaiveDate, Utc};
 use colored::Colorize;
 use dialoguer::Select;
-use failure::{Fail, Error};
+use anyhow::Error;
 use flate2::read::GzDecoder;
 use log::debug;
 use pbr::{ProgressBar, Units};
@@ -28,20 +28,20 @@ pub const YYYY_MM_DD: &str = "%Y-%m-%d";
 pub(crate) const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum InstallError {
-    #[fail(display = "Could not find {}; url: {}", spec, url)]
+    #[error("Could not find {spec}; url: {url}")]
     NotFound { url: String, spec: ToolchainSpec },
-    #[fail(display = "Could not download toolchain: {}", _0)]
-    Download(#[cause] DownloadError),
-    #[fail(display = "Could not create tempdir: {}", _0)]
-    TempDir(#[cause] io::Error),
-    #[fail(display = "Could not move tempdir into destination: {}", _0)]
-    Move(#[cause] io::Error),
-    #[fail(display = "Could not run subcommand {}: {}", cmd, err)]
+    #[error("Could not download toolchain: {0}")]
+    Download(#[source] DownloadError),
+    #[error("Could not create tempdir: {0}")]
+    TempDir(#[source] io::Error),
+    #[error("Could not move tempdir into destination: {0}")]
+    Move(#[source] io::Error),
+    #[error("Could not run subcommand {cmd}: {err}")]
     Subcommand {
         cmd: String,
-        #[cause]
+        #[source]
         err: io::Error,
     },
 }
@@ -155,7 +155,10 @@ impl Toolchain {
             } else {
                 Err(InstallError::Subcommand {
                     cmd: format!("{cmd:?}"),
-                    err: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
+                    err: io::Error::new(
+                        io::ErrorKind::Other,
+                        "thiserror::Errored to link via `rustup`",
+                    ),
                 })
             };
         }
@@ -296,7 +299,7 @@ impl Toolchain {
         let output = match cmd.output() {
             Ok(output) => output,
             Err(err) => {
-                panic!("failed to run {:?}: {:?}", cmd, err);
+                panic!("thiserror::Errored to run {:?}: {:?}", cmd, err);
             }
         };
 
@@ -428,22 +431,22 @@ impl DownloadParams {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum ArchiveError {
-    #[fail(display = "Failed to parse archive: {}", _0)]
-    Archive(#[cause] io::Error),
-    #[fail(display = "Failed to create directory: {}", _0)]
-    CreateDir(#[cause] io::Error),
+    #[error("thiserror::Errored to parse archive: {0}")]
+    Archive(#[source] io::Error),
+    #[error("thiserror::Errored to create directory: {0}")]
+    CreateDir(#[source] io::Error),
 }
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum DownloadError {
-    #[fail(display = "Tarball not found at {}", _0)]
+    #[error("Tarball not found at {0}")]
     NotFound(String),
-    #[fail(display = "A reqwest error occurred: {}", _0)]
-    Reqwest(#[cause] reqwest::Error),
-    #[fail(display = "An archive error occurred: {}", _0)]
-    Archive(#[cause] ArchiveError),
+    #[error("A reqwest error occurred: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("An archive error occurred: {0}")]
+    Archive(#[from] ArchiveError),
 }
 
 pub(crate) fn download_progress(

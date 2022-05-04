@@ -1,4 +1,4 @@
-use failure::{Error, format_err};
+use anyhow::{Error, Context};
 use reqwest::{self, blocking::Client, blocking::Response};
 use serde::{Deserialize, Serialize};
 
@@ -28,9 +28,10 @@ struct GithubAuthor {
 
 impl GithubCommitElem {
     fn date(&self) -> Result<GitDate, Error> {
-        let (date_str, _) = self.commit.committer.date.split_once("T").ok_or_else(|| {
-            format_err!("commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z")
-        })?;
+        let (date_str, _) =
+            self.commit.committer.date.split_once("T").context(
+                "commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z",
+            )?;
         Ok(parse_to_utc_date(date_str)?)
     }
 

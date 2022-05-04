@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use crate::{Bound, Commit, Error, GitDate, git, github};
 
 pub(crate) trait RustRepositoryAccessor {
@@ -38,12 +40,8 @@ impl RustRepositoryAccessor for AccessViaLocalGit {
             "fetching (via local git) commits from {} to {}",
             start_sha, end_sha
         );
-        git::get_commits_between(start_sha, end_sha).map_err(|e| {
-            failure::format_err!(
-                "failed during attempt to create/access local git repository: {}",
-                e
-            )
-        })
+        git::get_commits_between(start_sha, end_sha)
+            .context("failed during attempt to create/access local git repository")
     }
 }
 

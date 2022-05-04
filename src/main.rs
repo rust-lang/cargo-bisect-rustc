@@ -15,7 +15,7 @@ use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
 use colored::Colorize;
-use failure::{bail, format_err, Fail, Error};
+use anyhow::{bail, Error, Context};
 use log::debug;
 use reqwest::blocking::Client;
 use structopt::StructOpt;
@@ -177,8 +177,8 @@ enum Bound {
     Date(GitDate),
 }
 
-#[derive(Fail, Debug)]
-#[fail(display = "will never happen")]
+#[derive(thiserror::Error, Debug)]
+#[error("will never happen")]
 struct BoundParseError {}
 
 impl FromStr for Bound {
@@ -227,7 +227,7 @@ impl Opts {
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 struct ExitError(i32);
 
 impl fmt::Display for ExitError {
@@ -925,8 +925,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
         }
     }
 
-    let first_success =
-        first_success.ok_or_else(|| format_err!("could not find a nightly that built"))?;
+    let first_success = first_success.context("could not find a nightly that built")?;
 
     // confirm that the end of the date range has the regression
     let mut t_end = Toolchain {

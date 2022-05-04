@@ -8,7 +8,7 @@ use std::ops::Deref;
 use std::path::Path;
 
 use chrono::{TimeZone, Utc};
-use failure::{bail, Error, ResultExt};
+use anyhow::{bail, Error, Context};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;
@@ -110,8 +110,8 @@ fn find_origin_remote(repo: &Repository) -> Result<String, Error> {
         .filter_map(|name| name.and_then(|name| repo.find_remote(name).ok()))
         .find(|remote| remote.url().map_or(false, |url| url.contains(RUST_SRC_URL)))
         .and_then(|remote| remote.name().map(std::string::ToString::to_string))
-        .ok_or_else(|| {
-            failure::format_err!(
+        .with_context(|| {
+            format!(
                 "rust-lang/rust remote not found. \
 Try adding a remote pointing to `{}` in the rust repository at `{}`.",
                 RUST_SRC_URL,
