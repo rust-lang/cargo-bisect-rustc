@@ -1,6 +1,8 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::cargo)]
 #![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::let_underscore_drop)]
+#![allow(clippy::single_match_else)]
 
 use std::env;
 use std::ffi::OsString;
@@ -66,6 +68,7 @@ const REPORT_HEADER: &str = "\
     cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
       --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
     ```")]
+#[allow(clippy::struct_excessive_bools)]
 struct Opts {
     #[structopt(
         long,
@@ -234,7 +237,7 @@ impl fmt::Display for ExitError {
 }
 
 impl Config {
-    fn default_outcome_of_output(&self, output: process::Output) -> TestOutcome {
+    fn default_outcome_of_output(&self, output: &process::Output) -> TestOutcome {
         let status = output.status;
         let stdout_utf8 = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr_utf8 = String::from_utf8_lossy(&output.stderr).to_string();
@@ -249,11 +252,12 @@ impl Config {
 
         let input = (self.regress_on(), status.success());
         let result = match input {
-            (RegressOn::ErrorStatus, true) => TestOutcome::Baseline,
-            (RegressOn::ErrorStatus, false) => TestOutcome::Regressed,
-            (RegressOn::SuccessStatus, true) => TestOutcome::Regressed,
-            (RegressOn::SuccessStatus, false) => TestOutcome::Baseline,
-            (RegressOn::IceAlone, _) => {
+            (RegressOn::ErrorStatus, true) | (RegressOn::SuccessStatus, false) => {
+                TestOutcome::Baseline
+            }
+            (RegressOn::ErrorStatus, false)
+            | (RegressOn::SuccessStatus | RegressOn::NonCleanError, true) => TestOutcome::Regressed,
+            (RegressOn::IceAlone, _) | (RegressOn::NonCleanError, false) => {
                 if saw_ice {
                     TestOutcome::Regressed
                 } else {
@@ -265,15 +269,6 @@ impl Config {
                     TestOutcome::Baseline
                 } else {
                     TestOutcome::Regressed
-                }
-            }
-
-            (RegressOn::NonCleanError, true) => TestOutcome::Regressed,
-            (RegressOn::NonCleanError, false) => {
-                if saw_ice {
-                    TestOutcome::Regressed
-                } else {
-                    TestOutcome::Baseline
                 }
             }
         };
@@ -352,7 +347,7 @@ enum RegressOn {
 }
 
 impl RegressOn {
-    fn must_process_stderr(&self) -> bool {
+    fn must_process_stderr(self) -> bool {
         match self {
             RegressOn::ErrorStatus | RegressOn::SuccessStatus => false,
             RegressOn::NonCleanError | RegressOn::IceAlone | RegressOn::NotIce => true,

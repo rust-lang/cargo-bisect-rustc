@@ -326,7 +326,7 @@ impl Toolchain {
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
 
-                let default_choice = match cfg.default_outcome_of_output(output) {
+                let default_choice = match cfg.default_outcome_of_output(&output) {
                     TestOutcome::Regressed => 0,
                     TestOutcome::Baseline => 1,
                 };
@@ -345,7 +345,7 @@ impl Toolchain {
             }
         } else {
             let output = self.run_test(cfg);
-            cfg.default_outcome_of_output(output)
+            cfg.default_outcome_of_output(&output)
         };
 
         outcome
