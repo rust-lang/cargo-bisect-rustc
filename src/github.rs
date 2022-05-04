@@ -30,7 +30,7 @@ struct GithubAuthor {
 impl GithubCommitElem {
     fn date(&self) -> anyhow::Result<GitDate> {
         let (date_str, _) =
-            self.commit.committer.date.split_once("T").context(
+            self.commit.committer.date.split_once('T').context(
                 "commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z",
             )?;
         Ok(parse_to_utc_date(date_str)?)

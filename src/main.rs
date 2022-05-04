@@ -904,10 +904,8 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> anyhow::Result<BisectionRe
                         "the start of the range ({}) must not reproduce the regression",
                         t
                     );
-                } else {
-                    last_failure = nightly_date;
                 }
-
+                last_failure = nightly_date;
                 nightly_date = nightly_iter.next().unwrap();
             }
             Err(InstallError::NotFound { .. }) => {
