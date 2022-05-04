@@ -7,7 +7,6 @@ use std::process::{self, Command, Stdio};
 use chrono::{Date, NaiveDate, Utc};
 use colored::Colorize;
 use dialoguer::Select;
-use anyhow::Error;
 use flate2::read::GzDecoder;
 use log::debug;
 use pbr::{ProgressBar, Units};
@@ -209,7 +208,7 @@ impl Toolchain {
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
     }
 
-    pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+    pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), io::Error> {
         eprintln!("uninstalling {}", self);
         self.do_remove(dl_params)
     }
@@ -218,7 +217,7 @@ impl Toolchain {
     ///
     /// The main reason to call this (instead of `fs::remove_dir_all` directly)
     /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
-    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), io::Error> {
         let rustup_name = self.rustup_name();
 
         // Guard against destroying directories that this tool didn't create.
@@ -227,8 +226,7 @@ impl Toolchain {
         );
 
         let dir = dl_params.install_dir.join(rustup_name);
-        fs::remove_dir_all(&dir)?;
-        Ok(())
+        fs::remove_dir_all(&dir)
     }
 
     pub(crate) fn run_test(&self, cfg: &Config) -> process::Output {
