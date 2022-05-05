@@ -18,7 +18,7 @@ use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
 use reqwest::blocking::Client;
-use structopt::StructOpt;
+use clap::StructOpt;
 
 mod git;
 mod github;
@@ -57,7 +57,7 @@ const REPORT_HEADER: &str = "\
 ==================================================================================";
 
 #[derive(Debug, StructOpt)]
-#[structopt(after_help = "EXAMPLES:
+#[clap(after_help = "EXAMPLES:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
     cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
@@ -70,7 +70,7 @@ const REPORT_HEADER: &str = "\
     ```")]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
-    #[structopt(
+    #[clap(
         long,
         default_value = "error",
         help = "Custom regression definition",
@@ -79,31 +79,31 @@ struct Opts {
     )]
     regress: String,
 
-    #[structopt(short, long, help = "Download the alt build instead of normal build")]
+    #[clap(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[structopt(long, help = "Host triple for the compiler", default_value = "unknown")]
+    #[clap(long, help = "Host triple for the compiler", default_value = "unknown")]
     host: String,
 
-    #[structopt(long, help = "Cross-compilation target platform")]
+    #[clap(long, help = "Cross-compilation target platform")]
     target: Option<String>,
 
-    #[structopt(long, help = "Preserve the downloaded artifacts")]
+    #[clap(long, help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[structopt(long, help = "Preserve the target directory used for builds")]
+    #[clap(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
-    #[structopt(long, help = "Download rust-src [default: no download]")]
+    #[clap(long, help = "Download rust-src [default: no download]")]
     with_src: bool,
 
-    #[structopt(long, help = "Download rustc-dev [default: no download]")]
+    #[clap(long, help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
-    #[structopt(short, long = "component", help = "additional components to install")]
+    #[clap(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Root directory for tests",
         default_value = ".",
@@ -111,61 +111,61 @@ struct Opts {
     )]
     test_dir: PathBuf,
 
-    #[structopt(long, help = "Manually evaluate for regression with prompts")]
+    #[clap(long, help = "Manually evaluate for regression with prompts")]
     prompt: bool,
 
-    #[structopt(
+    #[clap(
         long,
         short,
         help = "Assume failure after specified number of seconds (for bisecting hangs)"
     )]
     timeout: Option<usize>,
 
-    #[structopt(long = "verbose", parse(from_occurrences))]
+    #[clap(long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
-    #[structopt(
+    #[clap(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
-        multiple = true,
+        multiple_values = true,
         last = true,
         parse(from_os_str)
     )]
     command_args: Vec<OsString>,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     start: Option<Bound>,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Right bound for search (*with* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     end: Option<Bound>,
 
-    #[structopt(long, help = "Bisect via commit artifacts")]
+    #[clap(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[structopt(long, help = "How to access Rust git repository [github|checkout]")]
+    #[clap(long, help = "How to access Rust git repository [github|checkout]")]
     access: Option<String>,
 
-    #[structopt(long, help = "Install the given artifact")]
+    #[clap(long, help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[structopt(long, help = "Force installation over existing artifacts")]
+    #[clap(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Script replacement for `cargo build` command",
         parse(from_os_str)
     )]
     script: Option<PathBuf>,
 
-    #[structopt(long, help = "Do not install cargo [default: install cargo]")]
+    #[clap(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 }
 
@@ -483,8 +483,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()
 // Application entry point
 fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
-    let args = env::args_os().filter(|a| a != "bisect-rustc");
-    let args = Opts::from_iter(args);
+    let args = Opts::parse();
     check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
 
