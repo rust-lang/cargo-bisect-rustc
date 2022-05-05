@@ -1,39 +1,40 @@
 cargo-bisect-rustc 0.6.3
+Bisects rustc toolchains with rustup
 
 USAGE:
-    cargo-bisect-rustc [FLAGS] [OPTIONS] [-- <command-args>...]
-
-FLAGS:
-    -a, --alt                Download the alt build instead of normal build
-        --by-commit          Bisect via commit artifacts
-        --force-install      Force installation over existing artifacts
-    -h, --help               Prints help information
-        --preserve           Preserve the downloaded artifacts
-        --preserve-target    Preserve the target directory used for builds
-        --prompt             Manually evaluate for regression with prompts
-    -V, --version            Prints version information
-        --verbose            
-        --with-dev           Download rustc-dev [default: no download]
-        --with-src           Download rust-src [default: no download]
-        --without-cargo      Do not install cargo [default: install cargo]
-
-OPTIONS:
-        --access <access>              How to access Rust git repository [github|checkout]
-    -c, --component <components>...    additional components to install
-        --end <end>                    Right bound for search (*with* regression). You can use a date (YYYY-MM-DD), git
-                                       tag name (e.g. 1.58.0) or git commit SHA.
-        --host <host>                  Host triple for the compiler [default: unknown]
-        --install <install>            Install the given artifact
-        --regress <regress>            Custom regression definition [default: error]
-        --script <script>              Script replacement for `cargo build` command
-        --start <start>                Left bound for search (*without* regression). You can use a date (YYYY-MM-DD),
-                                       git tag name (e.g. 1.58.0) or git commit SHA.
-        --target <target>              Cross-compilation target platform
-        --test-dir <test-dir>          Root directory for tests [default: .]
-    -t, --timeout <timeout>            Assume failure after specified number of seconds (for bisecting hangs)
+    cargo-bisect-rustc [OPTIONS] [-- <COMMAND_ARGS>...]
 
 ARGS:
-    <command-args>...    Arguments to pass to cargo or the file specified by --script during tests
+    <COMMAND_ARGS>...    Arguments to pass to cargo or the file specified by --script during
+                         tests
+
+OPTIONS:
+    -a, --alt                       Download the alt build instead of normal build
+        --access <ACCESS>           How to access Rust git repository [github|checkout]
+        --by-commit                 Bisect via commit artifacts
+    -c, --component <COMPONENTS>    additional components to install
+        --end <END>                 Right bound for search (*with* regression). You can use a date
+                                    (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
+        --force-install             Force installation over existing artifacts
+    -h, --help                      Print help information
+        --host <HOST>               Host triple for the compiler [default: unknown]
+        --install <INSTALL>         Install the given artifact
+        --preserve                  Preserve the downloaded artifacts
+        --preserve-target           Preserve the target directory used for builds
+        --prompt                    Manually evaluate for regression with prompts
+        --regress <REGRESS>         Custom regression definition [default: error]
+        --script <SCRIPT>           Script replacement for `cargo build` command
+        --start <START>             Left bound for search (*without* regression). You can use a date
+                                    (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
+    -t, --timeout <TIMEOUT>         Assume failure after specified number of seconds (for bisecting
+                                    hangs)
+        --target <TARGET>           Cross-compilation target platform
+        --test-dir <TEST_DIR>       Root directory for tests [default: .]
+    -V, --version                   Print version information
+        --verbose                   
+        --with-dev                  Download rustc-dev [default: no download]
+        --with-src                  Download rust-src [default: no download]
+        --without-cargo             Do not install cargo [default: install cargo]
 
 EXAMPLES:
     Run a fully automatic nightly bisect doing `cargo check`:

@@ -57,7 +57,10 @@ const REPORT_HEADER: &str = "\
 ==================================================================================";
 
 #[derive(Debug, StructOpt)]
-#[clap(after_help = "EXAMPLES:
+#[clap(
+    version,
+    about,
+    after_help = "EXAMPLES:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
     cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
@@ -67,7 +70,8 @@ const REPORT_HEADER: &str = "\
     ```
     cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
       --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
-    ```")]
+    ```"
+)]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
     #[clap(
