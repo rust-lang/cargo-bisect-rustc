@@ -14,11 +14,11 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
+use clap::Parser;
 use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
 use reqwest::blocking::Client;
-use clap::StructOpt;
 
 mod git;
 mod github;
@@ -56,7 +56,7 @@ const REPORT_HEADER: &str = "\
 = Copy and paste the text below into the issue report thread.  Thanks!           =
 ==================================================================================";
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 #[clap(
     version,
     about,
@@ -295,7 +295,7 @@ impl Config {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, StructOpt)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 /// Customize what is treated as regression.
 enum RegressOn {
     /// `ErrorStatus`: Marks test outcome as `Regressed` if and only if
