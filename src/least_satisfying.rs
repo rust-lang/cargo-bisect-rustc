@@ -24,7 +24,7 @@ where
         if rm_no + 1 == lm_yes {
             return lm_yes;
         }
-        for (left, right) in unknown_ranges.iter().cloned() {
+        for (left, right) in unknown_ranges.iter().copied() {
             // if we're straddling an unknown range, then pretend it doesn't exist
             if rm_no + 1 == left && right + 1 == lm_yes {
                 return lm_yes;
@@ -68,12 +68,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Satisfies::*;
+    use super::Satisfies::{No, Unknown, Yes};
     use super::{least_satisfying, Satisfies};
     use quickcheck::{QuickCheck, TestResult};
 
     fn prop(xs: Vec<Option<bool>>) -> TestResult {
-        let mut satisfies_v = xs.into_iter().map(|o| o.into()).collect::<Vec<Satisfies>>();
+        let mut satisfies_v = xs
+            .into_iter()
+            .map(std::convert::Into::into)
+            .collect::<Vec<Satisfies>>();
         satisfies_v.insert(0, Satisfies::No);
         satisfies_v.push(Satisfies::Yes);
 

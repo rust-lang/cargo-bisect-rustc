@@ -1,19 +1,16 @@
 use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::iter;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 
-use chrono::{Date, naive, Utc};
-use colored::*;
+use chrono::{Date, NaiveDate, Utc};
+use colored::Colorize;
 use dialoguer::Select;
 use failure::{Fail, Error};
 use flate2::read::GzDecoder;
 use log::debug;
-use once_cell::sync::OnceCell;
 use pbr::{ProgressBar, Units};
-use regex::Regex;
 use reqwest::blocking::{Client, Response};
 use reqwest::header::CONTENT_LENGTH;
 use rustc_version::Channel;
@@ -22,11 +19,11 @@ use tee::TeeReader;
 use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
-use crate::{Config, CommandTemplate};
+use crate::Config;
 
 pub type GitDate = Date<Utc>;
 
-const YYYY_MM_DD: &str = "%Y-%m-%d";
+pub const YYYY_MM_DD: &str = "%Y-%m-%d";
 
 pub(crate) const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
@@ -41,11 +38,11 @@ pub(crate) enum InstallError {
     TempDir(#[cause] io::Error),
     #[fail(display = "Could not move tempdir into destination: {}", _0)]
     Move(#[cause] io::Error),
-    #[fail(display = "Could not run subcommand {}: {}", command, cause)]
+    #[fail(display = "Could not run subcommand {}: {}", cmd, err)]
     Subcommand {
-        command: String,
+        cmd: String,
         #[cause]
-        cause: io::Error,
+        err: io::Error,
     },
 }
 
@@ -89,30 +86,11 @@ impl Toolchain {
     /// This returns the date of the default toolchain, if it is a nightly toolchain.
     /// Returns `None` if the installed toolchain is not a nightly toolchain.
     pub(crate) fn default_nightly() -> Option<GitDate> {
-        fn inner() -> Option<GitDate> {
-            let version_meta = rustc_version::version_meta().unwrap();
-
-            if let Channel::Nightly = version_meta.channel {
-                if let Some(str_date) = version_meta.commit_date {
-                    let regex = Regex::new(r"(?m)^(\d{4})-(\d{2})-(\d{2})$").unwrap();
-                    if let Some(cap) = regex.captures(&str_date) {
-                        let year = cap.get(1)?.as_str().parse::<i32>().ok()?;
-                        let month = cap.get(2)?.as_str().parse::<u32>().ok()?;
-                        let day = cap.get(3)?.as_str().parse::<u32>().ok()?;
-
-                        // rustc commit date is off-by-one.
-                        let date = naive::NaiveDate::from_ymd(year, month, day).succ();
-
-                        return Some(Date::from_utc(date, Utc));
-                    }
-                }
-            }
-
-            None
-        }
-
-        static DATE: OnceCell<Option<GitDate>> = OnceCell::new();
-        *(DATE.get_or_init(inner))
+        rustc_version::version_meta()
+            .ok()
+            .filter(|v| v.channel == Channel::Nightly)
+            // rustc commit date is off-by-one, see #112
+            .and_then(|v| parse_to_utc_date(&v.commit_date?).ok().map(|d| d.succ()))
     }
 
     pub(crate) fn is_current_nightly(&self) -> bool {
@@ -149,12 +127,16 @@ impl Toolchain {
             debug!("installing (via link) {}", self);
 
             let nightly_path: String = {
-                let cmd = CommandTemplate::new(
-                    ["rustc", "--print", "sysroot"]
-                        .iter()
-                        .map(|s| (*s).to_string()),
-                );
-                let stdout = cmd.output()?.stdout;
+                let mut cmd = Command::new("rustc");
+                cmd.args(["--print", "sysroot"]);
+
+                let stdout = cmd
+                    .output()
+                    .map_err(|err| InstallError::Subcommand {
+                        cmd: format!("{cmd:?}"),
+                        err,
+                    })?
+                    .stdout;
                 let output = String::from_utf8_lossy(&stdout);
                 // the output should be the path, terminated by a newline
                 let mut path = output.to_string();
@@ -162,22 +144,20 @@ impl Toolchain {
                 assert_eq!(last, Some('\n'));
                 path
             };
-
-            let cmd = CommandTemplate::new(
-                ["rustup", "toolchain", "link"]
-                    .iter()
-                    .map(|s| (*s).to_string())
-                    .chain(iter::once(self.rustup_name()))
-                    .chain(iter::once(nightly_path)),
-            );
-            if cmd.status()?.success() {
-                return Ok(());
+            let mut cmd = Command::new("rustup");
+            cmd.args(["toolchain", "link", &self.rustup_name(), &nightly_path]);
+            let status = cmd.status().map_err(|err| InstallError::Subcommand {
+                cmd: format!("{cmd:?}"),
+                err,
+            })?;
+            return if status.success() {
+                Ok(())
             } else {
-                return Err(InstallError::Subcommand {
-                    command: cmd.string(),
-                    cause: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
-                });
-            }
+                Err(InstallError::Subcommand {
+                    cmd: format!("{cmd:?}"),
+                    err: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
+                })
+            };
         }
 
         debug!("installing via download {}", self);
@@ -193,7 +173,7 @@ impl Toolchain {
             .map(|component| {
                 if component == "rust-src" {
                     // rust-src is target-independent
-                    format!("rust-src-nightly")
+                    "rust-src-nightly".to_string()
                 } else {
                     format!("{}-nightly-{}", component, self.host)
                 }
@@ -205,26 +185,25 @@ impl Toolchain {
             );
 
         for component in components {
-            if let Err(e) = download_tarball(
+            download_tarball(
                 client,
                 &component,
                 &format!("{}/{}/{}.tar", dl_params.url_prefix, location, component),
                 tmpdir.path(),
-            ) {
-                match e {
-                    DownloadError::NotFound(url) => {
-                        return Err(InstallError::NotFound {
-                            url,
-                            spec: self.spec.clone(),
-                        })
+            )
+            .map_err(|e| {
+                if let DownloadError::NotFound(url) = e {
+                    InstallError::NotFound {
+                        url,
+                        spec: self.spec.clone(),
                     }
-                    _ => return Err(InstallError::Download(e)),
+                } else {
+                    InstallError::Download(e)
                 }
-            }
+            })?;
         }
 
-        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)?;
-        Ok(())
+        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
     }
 
     pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
@@ -236,7 +215,7 @@ impl Toolchain {
     ///
     /// The main reason to call this (instead of `fs::remove_dir_all` directly)
     /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
-    pub(crate) fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
         let rustup_name = self.rustup_name();
 
         // Guard against destroying directories that this tool didn't create.
@@ -347,7 +326,7 @@ impl Toolchain {
                 eprintln!("\n\n{} finished with exit code {:?}.", self, status.code());
                 eprintln!("please select an action to take:");
 
-                let default_choice = match cfg.default_outcome_of_output(output) {
+                let default_choice = match cfg.default_outcome_of_output(&output) {
                     TestOutcome::Regressed => 0,
                     TestOutcome::Baseline => 1,
                 };
@@ -366,11 +345,15 @@ impl Toolchain {
             }
         } else {
             let output = self.run_test(cfg);
-            cfg.default_outcome_of_output(output)
+            cfg.default_outcome_of_output(&output)
         };
 
         outcome
     }
+}
+
+pub fn parse_to_utc_date(s: &str) -> chrono::ParseResult<GitDate> {
+    NaiveDate::parse_from_str(s, YYYY_MM_DD).map(|date| Date::from_utc(date, Utc))
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -419,9 +402,8 @@ impl DownloadParams {
         Self::from_cfg_with_url_prefix(cfg, NIGHTLY_SERVER.to_string())
     }
 
-    pub(crate) fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
-        let mut components = Vec::new();
-        components.push("rustc".to_string());
+    fn from_cfg_with_url_prefix(cfg: &Config, url_prefix: String) -> Self {
+        let mut components = vec!["rustc".to_string()];
         if !cfg.args.without_cargo {
             components.push("cargo".to_string());
         }
@@ -468,7 +450,7 @@ pub(crate) fn download_progress(
     client: &Client,
     name: &str,
     url: &str,
-) -> Result<(Response, ProgressBar<io::Stdout>), DownloadError> {
+) -> Result<TeeReader<Response, ProgressBar<io::Stdout>>, DownloadError> {
     debug!("downloading <{}>...", url);
 
     let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
@@ -483,43 +465,36 @@ pub(crate) fn download_progress(
     let length = response
         .headers()
         .get(CONTENT_LENGTH)
-        .and_then(|c| c.to_str().ok())
-        .and_then(|c| c.parse().ok())
+        .and_then(|c| c.to_str().ok()?.parse().ok())
         .unwrap_or(0);
     let mut bar = ProgressBar::new(length);
     bar.set_units(Units::Bytes);
-    bar.message(&format!("{}: ", name));
+    bar.message(&format!("{name}: "));
 
-    Ok((response, bar))
+    Ok(TeeReader::new(response, bar))
 }
 
-pub(crate) fn download_tar_xz(
+fn download_tar_xz(
     client: &Client,
     name: &str,
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    let (response, mut bar) = download_progress(client, name, url)?;
-    let response = TeeReader::new(response, &mut bar);
-    let response = XzDecoder::new(response);
-    unarchive(response, dest).map_err(DownloadError::Archive)?;
-    Ok(())
+    let response = XzDecoder::new(download_progress(client, name, url)?);
+    unarchive(response, dest).map_err(DownloadError::Archive)
 }
 
-pub(crate) fn download_tar_gz(
+fn download_tar_gz(
     client: &Client,
     name: &str,
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    let (response, mut bar) = download_progress(client, name, url)?;
-    let response = TeeReader::new(response, &mut bar);
-    let response = GzDecoder::new(response);
-    unarchive(response, dest).map_err(DownloadError::Archive)?;
-    Ok(())
+    let response = GzDecoder::new(download_progress(client, name, url)?);
+    unarchive(response, dest).map_err(DownloadError::Archive)
 }
 
-pub(crate) fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> {
+fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> {
     for entry in Archive::new(r).entries().map_err(ArchiveError::Archive)? {
         let mut entry = entry.map_err(ArchiveError::Archive)?;
         let entry_path = entry.path().map_err(ArchiveError::Archive)?;
@@ -545,16 +520,16 @@ pub(crate) fn unarchive<R: Read>(r: R, dest: &Path) -> Result<(), ArchiveError> 
     Ok(())
 }
 
-pub(crate) fn download_tarball(
+fn download_tarball(
     client: &Client,
     name: &str,
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
     match download_tar_xz(client, name, &format!("{}.xz", url,), dest) {
-        Ok(()) => return Ok(()),
-        Err(DownloadError::NotFound { .. }) => {}
-        Err(e) => return Err(e),
+        Err(DownloadError::NotFound { .. }) => {
+            download_tar_gz(client, name, &format!("{}.gz", url,), dest)
+        }
+        res => res,
     }
-    download_tar_gz(client, name, &format!("{}.gz", url,), dest)
 }

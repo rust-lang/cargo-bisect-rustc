@@ -1,32 +1,42 @@
+#![warn(clippy::pedantic)]
+#![warn(clippy::cargo)]
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::let_underscore_drop)]
+#![allow(clippy::single_match_else)]
+
 use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process;
 use std::str::FromStr;
 
-use chrono::{Date, DateTime, Utc};
-use colored::*;
+use chrono::{Date, Duration, NaiveDate, Utc};
+use colored::Colorize;
 use failure::{bail, format_err, Fail, Error};
 use log::debug;
 use reqwest::blocking::Client;
 use structopt::StructOpt;
-use tee::TeeReader;
 
+mod git;
+mod github;
 mod least_satisfying;
 mod repo_access;
 mod toolchains;
 
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
-use crate::toolchains::*;
+use crate::toolchains::{
+    DownloadParams, InstallError, NIGHTLY_SERVER, TestOutcome, Toolchain, ToolchainSpec,
+    YYYY_MM_DD, download_progress, parse_to_utc_date,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub sha: String,
-    pub date: DateTime<Utc>,
+    pub date: GitDate,
     pub summary: String,
 }
 
@@ -58,9 +68,10 @@ const REPORT_HEADER: &str = "\
     cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
       --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
     ```")]
+#[allow(clippy::struct_excessive_bools)]
 struct Opts {
     #[structopt(
-        long = "regress",
+        long,
         default_value = "error",
         help = "Custom regression definition",
         long_help = "Custom regression definition \
@@ -68,67 +79,49 @@ struct Opts {
     )]
     regress: String,
 
-    #[structopt(
-        short = "a",
-        long = "alt",
-        help = "Download the alt build instead of normal build"
-    )]
+    #[structopt(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[structopt(
-        long = "host",
-        help = "Host triple for the compiler",
-        default_value = "unknown"
-    )]
+    #[structopt(long, help = "Host triple for the compiler", default_value = "unknown")]
     host: String,
 
-    #[structopt(long = "target", help = "Cross-compilation target platform")]
+    #[structopt(long, help = "Cross-compilation target platform")]
     target: Option<String>,
 
-    #[structopt(long = "preserve", help = "Preserve the downloaded artifacts")]
+    #[structopt(long, help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[structopt(
-        long = "preserve-target",
-        help = "Preserve the target directory used for builds"
-    )]
+    #[structopt(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
-    #[structopt(long = "with-src", help = "Download rust-src [default: no download]")]
+    #[structopt(long, help = "Download rust-src [default: no download]")]
     with_src: bool,
 
-    #[structopt(long = "with-dev", help = "Download rustc-dev [default: no download]")]
+    #[structopt(long, help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
-    #[structopt(
-        short = "c",
-        long = "component",
-        help = "additional components to install"
-    )]
+    #[structopt(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
 
     #[structopt(
-        long = "test-dir",
+        long,
         help = "Root directory for tests",
         default_value = ".",
         parse(from_os_str)
     )]
     test_dir: PathBuf,
 
-    #[structopt(
-        long = "prompt",
-        help = "Manually evaluate for regression with prompts"
-    )]
+    #[structopt(long, help = "Manually evaluate for regression with prompts")]
     prompt: bool,
 
     #[structopt(
-        long = "timeout",
-        short = "t",
+        long,
+        short,
         help = "Assume failure after specified number of seconds (for bisecting hangs)"
     )]
     timeout: Option<usize>,
 
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    #[structopt(long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
     #[structopt(
@@ -140,48 +133,39 @@ struct Opts {
     command_args: Vec<OsString>,
 
     #[structopt(
-        long = "start",
+        long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     start: Option<Bound>,
 
     #[structopt(
-        long = "end",
+        long,
         help = "Right bound for search (*with* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     end: Option<Bound>,
 
-    #[structopt(long = "by-commit", help = "Bisect via commit artifacts")]
+    #[structopt(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[structopt(
-        long = "access",
-        help = "How to access Rust git repository [github|checkout]"
-    )]
+    #[structopt(long, help = "How to access Rust git repository [github|checkout]")]
     access: Option<String>,
 
-    #[structopt(long = "install", help = "Install the given artifact")]
+    #[structopt(long, help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[structopt(
-        long = "force-install",
-        help = "Force installation over existing artifacts"
-    )]
+    #[structopt(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
     #[structopt(
-        long = "script",
+        long,
         help = "Script replacement for `cargo build` command",
         parse(from_os_str)
     )]
     script: Option<PathBuf>,
 
-    #[structopt(
-        long = "without-cargo",
-        help = "Do not install cargo [default: install cargo]"
-    )]
+    #[structopt(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 }
 
@@ -197,12 +181,10 @@ enum Bound {
 #[fail(display = "will never happen")]
 struct BoundParseError {}
 
-const YYYY_MM_DD: &str = "%Y-%m-%d";
-
 impl FromStr for Bound {
     type Err = BoundParseError;
     fn from_str(s: &str) -> Result<Bound, BoundParseError> {
-        match chrono::NaiveDate::parse_from_str(s, YYYY_MM_DD) {
+        match NaiveDate::parse_from_str(s, YYYY_MM_DD) {
             Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
             Err(_) => Ok(Bound::Commit(s.to_string())),
         }
@@ -223,8 +205,7 @@ impl Bound {
                 eprintln!("fetching {}", url);
                 let client = Client::new();
                 let name = format!("nightly manifest {}", date_str);
-                let (response, mut bar) = download_progress(&client, &name, &url)?;
-                let mut response = TeeReader::new(response, &mut bar);
+                let mut response = download_progress(&client, &name, &url)?;
                 let mut commit = String::new();
                 response.read_to_string(&mut commit)?;
 
@@ -256,7 +237,7 @@ impl fmt::Display for ExitError {
 }
 
 impl Config {
-    fn default_outcome_of_output(&self, output: process::Output) -> TestOutcome {
+    fn default_outcome_of_output(&self, output: &process::Output) -> TestOutcome {
         let status = output.status;
         let stdout_utf8 = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr_utf8 = String::from_utf8_lossy(&output.stderr).to_string();
@@ -266,38 +247,28 @@ impl Config {
             status, stdout_utf8, stderr_utf8
         );
 
-        let saw_ice = || -> bool {
-            stderr_utf8.contains("error: internal compiler error")
-                || stderr_utf8.contains("thread 'rustc' has overflowed its stack")
-        };
+        let saw_ice = stderr_utf8.contains("error: internal compiler error")
+            || stderr_utf8.contains("thread 'rustc' has overflowed its stack");
 
         let input = (self.regress_on(), status.success());
         let result = match input {
-            (RegressOn::ErrorStatus, true) => TestOutcome::Baseline,
-            (RegressOn::ErrorStatus, false) => TestOutcome::Regressed,
-            (RegressOn::SuccessStatus, true) => TestOutcome::Regressed,
-            (RegressOn::SuccessStatus, false) => TestOutcome::Baseline,
-            (RegressOn::IceAlone, _) => {
-                if saw_ice() {
+            (RegressOn::ErrorStatus, true) | (RegressOn::SuccessStatus, false) => {
+                TestOutcome::Baseline
+            }
+            (RegressOn::ErrorStatus, false)
+            | (RegressOn::SuccessStatus | RegressOn::NonCleanError, true) => TestOutcome::Regressed,
+            (RegressOn::IceAlone, _) | (RegressOn::NonCleanError, false) => {
+                if saw_ice {
                     TestOutcome::Regressed
                 } else {
                     TestOutcome::Baseline
                 }
             }
             (RegressOn::NotIce, _) => {
-                if saw_ice() {
+                if saw_ice {
                     TestOutcome::Baseline
                 } else {
                     TestOutcome::Regressed
-                }
-            }
-
-            (RegressOn::NonCleanError, true) => TestOutcome::Regressed,
-            (RegressOn::NonCleanError, false) => {
-                if saw_ice() {
-                    TestOutcome::Regressed
-                } else {
-                    TestOutcome::Baseline
                 }
             }
         };
@@ -376,57 +347,11 @@ enum RegressOn {
 }
 
 impl RegressOn {
-    fn must_process_stderr(&self) -> bool {
+    fn must_process_stderr(self) -> bool {
         match self {
             RegressOn::ErrorStatus | RegressOn::SuccessStatus => false,
             RegressOn::NonCleanError | RegressOn::IceAlone | RegressOn::NotIce => true,
         }
-    }
-}
-
-// A simpler wrapper struct to make up for impoverished `Command` in libstd.
-struct CommandTemplate(Vec<String>);
-
-impl CommandTemplate {
-    fn new(strings: impl Iterator<Item = String>) -> Self {
-        CommandTemplate(strings.collect())
-    }
-
-    fn command(&self) -> Command {
-        assert!(!self.0.is_empty());
-        let mut cmd = Command::new(&self.0[0]);
-        for arg in &self.0[1..] {
-            cmd.arg(arg);
-        }
-        cmd
-    }
-
-    fn string(&self) -> String {
-        assert!(!self.0.is_empty());
-        let mut s = self.0[0].to_string();
-        for arg in &self.0[1..] {
-            s.push(' ');
-            s.push_str(arg);
-        }
-        s
-    }
-
-    fn status(&self) -> Result<process::ExitStatus, InstallError> {
-        self.command()
-            .status()
-            .map_err(|cause| InstallError::Subcommand {
-                command: self.string(),
-                cause,
-            })
-    }
-
-    fn output(&self) -> Result<process::Output, InstallError> {
-        self.command()
-            .output()
-            .map_err(|cause| InstallError::Subcommand {
-                command: self.string(),
-                cause,
-            })
     }
 }
 
@@ -479,13 +404,12 @@ impl Config {
         }
 
         let is_commit = match (args.start.clone(), args.end.clone()) {
-            (Some(Bound::Commit(_)), Some(Bound::Commit(_)))
-            | (None, Some(Bound::Commit(_)))
+            (Some(Bound::Commit(_)) | None, Some(Bound::Commit(_)))
             | (Some(Bound::Commit(_)), None) => Some(true),
 
-            (Some(Bound::Date(_)), Some(Bound::Date(_)))
-            | (None, Some(Bound::Date(_)))
-            | (Some(Bound::Date(_)), None) => Some(false),
+            (Some(Bound::Date(_)) | None, Some(Bound::Date(_))) | (Some(Bound::Date(_)), None) => {
+                Some(false)
+            }
 
             (None, None) => None,
 
@@ -526,10 +450,10 @@ impl Config {
 
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
     // current UTC date
-    let current = Utc::now().date();
+    let current = Utc::today();
     match start.as_ref().zip(end.as_ref()) {
         // start date is after end date
-        Some((Bound::Date(start), Bound::Date(end))) if end < &start => {
+        Some((Bound::Date(start), Bound::Date(end))) if end < start => {
             bail!(
                 "end should be after start, got start: {} and end {}",
                 start,
@@ -844,56 +768,9 @@ impl Iterator for NightlyFinderIter {
             14
         };
 
-        self.current_date = self.current_date - chrono::Duration::days(jump_length);
+        self.current_date = self.current_date - Duration::days(jump_length);
         Some(self.current_date)
     }
-}
-
-#[test]
-fn test_nightly_finder_iterator() {
-    let start_date = chrono::Date::from_utc(
-        chrono::naive::NaiveDate::from_ymd(2019, 01, 01),
-        chrono::Utc,
-    );
-
-    let mut iter = NightlyFinderIter::new(start_date);
-
-    assert_eq!(start_date - chrono::Duration::days(2), iter.next().unwrap());
-    assert_eq!(start_date - chrono::Duration::days(4), iter.next().unwrap());
-    assert_eq!(start_date - chrono::Duration::days(6), iter.next().unwrap());
-    assert_eq!(start_date - chrono::Duration::days(8), iter.next().unwrap());
-    assert_eq!(
-        start_date - chrono::Duration::days(15),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(22),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(29),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(36),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(43),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(50),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(64),
-        iter.next().unwrap()
-    );
-    assert_eq!(
-        start_date - chrono::Duration::days(78),
-        iter.next().unwrap()
-    );
 }
 
 fn install_and_test(
@@ -929,14 +806,11 @@ fn bisect_to_regression(
     dl_spec: &DownloadParams,
 ) -> usize {
     least_satisfying(toolchains, |t| {
-        match install_and_test(t, cfg, client, dl_spec) {
-            Ok(r) => r,
-            Err(_) => Satisfies::Unknown,
-        }
+        install_and_test(t, cfg, client, dl_spec).unwrap_or(Satisfies::Unknown)
     })
 }
 
-fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
+fn get_start_date(cfg: &Config) -> Date<Utc> {
     if let Some(Bound::Date(date)) = cfg.args.start {
         date
     } else {
@@ -944,19 +818,18 @@ fn get_start_date(cfg: &Config) -> chrono::Date<Utc> {
     }
 }
 
-fn get_end_date(cfg: &Config) -> chrono::Date<Utc> {
+fn get_end_date(cfg: &Config) -> Date<Utc> {
     if let Some(Bound::Date(date)) = cfg.args.end {
         date
     } else if let Some(date) = Toolchain::default_nightly() {
         date
     } else {
-        chrono::Utc::now().date()
+        Utc::today()
     }
 }
 
-fn date_is_future(test_date: chrono::Date<Utc>) -> bool {
-    let current_date = chrono::Utc::now().date();
-    test_date > current_date
+fn date_is_future(test_date: Date<Utc>) -> bool {
+    test_date > Utc::today()
 }
 
 // nightlies branch of bisect execution
@@ -968,10 +841,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     let dl_spec = DownloadParams::for_nightly(cfg);
 
     // before this date we didn't have -std packages
-    let end_at = chrono::Date::from_utc(
-        chrono::naive::NaiveDate::from_ymd(2015, 10, 20),
-        chrono::Utc,
-    );
+    let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
     let mut first_success = None;
 
     let mut nightly_date = get_start_date(cfg);
@@ -1023,7 +893,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
                 // If Satisfies::No, then the regression was not identified in this nightly.
                 // Break out of the loop and use this as the start date for the
                 // bisection range
-                if let Satisfies::No = r {
+                if r == Satisfies::No {
                     first_success = Some(nightly_date);
                     break;
                 } else if has_start {
@@ -1067,18 +937,13 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
     t_end.std_targets.sort();
     t_end.std_targets.dedup();
 
-    match install_and_test(&t_end, cfg, client, &dl_spec) {
-        Ok(r) => {
-            // If Satisfies::No, then the regression was not identified in this nightly.
-            // this is an error, abort with error message
-            if r == Satisfies::No {
-                bail!(
-                    "the end of the range ({}) does not reproduce the regression",
-                    t_end
-                );
-            }
-        }
-        Err(error) => return Err(error.into()),
+    let result_nightly = install_and_test(&t_end, cfg, client, &dl_spec)?;
+    // The regression was not identified in this nightly.
+    if result_nightly == Satisfies::No {
+        bail!(
+            "the end of the range ({}) does not reproduce the regression",
+            t_end
+        );
     }
 
     let toolchains = toolchains_between(
@@ -1101,9 +966,7 @@ fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Er
 fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<Toolchain> {
     match (a, b) {
         (ToolchainSpec::Nightly { date: a }, ToolchainSpec::Nightly { date: b }) => {
-            let size = (b - a).num_days() + 1;
-            assert!(size > 0);
-            let mut toolchains = Vec::with_capacity(size as usize);
+            let mut toolchains = Vec::new();
             let mut date = a;
             let mut std_targets = vec![cfg.args.host.clone(), cfg.target.clone()];
             std_targets.sort();
@@ -1170,7 +1033,7 @@ fn bisect_ci_via(
         eprintln!(
             "  commit[{}] {}: {}",
             j,
-            commit.date.date(),
+            commit.date,
             commit.summary.split('\n').next().unwrap()
         )
     }
@@ -1186,8 +1049,7 @@ fn bisect_ci_in_commits(
     mut commits: Vec<Commit>,
 ) -> Result<BisectionResult, Error> {
     let dl_spec = DownloadParams::for_ci(cfg);
-    let now = chrono::Utc::now();
-    commits.retain(|c| now.signed_duration_since(c.date).num_days() < 167);
+    commits.retain(|c| Utc::today() - c.date < Duration::days(167));
 
     if commits.is_empty() {
         bail!(
@@ -1225,33 +1087,22 @@ fn bisect_ci_in_commits(
 
     if !toolchains.is_empty() {
         // validate commit at start of range
-        match install_and_test(&toolchains[0], cfg, client, &dl_spec) {
-            Ok(r) => {
-                // If Satisfies::Yes, then the commit at the beginning of the range
-                // has the regression, this is an error
-                if r == Satisfies::Yes {
-                    bail!(
-                        "the commit at the start of the range ({}) includes the regression",
-                        &toolchains[0]
-                    );
-                }
-            }
-            Err(error) => return Err(error.into()),
+        let start_range_result = install_and_test(&toolchains[0], cfg, client, &dl_spec)?;
+        if start_range_result == Satisfies::Yes {
+            bail!(
+                "the commit at the start of the range ({}) includes the regression",
+                &toolchains[0]
+            );
         }
 
         // validate commit at end of range
-        match install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec) {
-            Ok(r) => {
-                // If Satisfies::No, then the regression was not identified at the end of the
-                // commit range, this is an error
-                if r == Satisfies::No {
-                    bail!(
-                        "the commit at the end of the range ({}) does not reproduce the regression",
-                        &toolchains[toolchains.len() - 1]
-                    );
-                }
-            }
-            Err(error) => return Err(error.into()),
+        let end_range_result =
+            install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec)?;
+        if end_range_result == Satisfies::No {
+            bail!(
+                "the commit at the end of the range ({}) does not reproduce the regression",
+                &toolchains[toolchains.len() - 1]
+            );
         }
     }
 
@@ -1291,29 +1142,40 @@ mod tests {
     // Start and end date validations
     #[test]
     fn test_check_bounds_valid_bounds() {
-        let date1 = chrono::Utc::now().date().pred();
-        let date2 = chrono::Utc::now().date().pred();
+        let date1 = chrono::Utc::today().pred();
+        let date2 = chrono::Utc::today().pred();
         assert!(check_bounds(&Some(Bound::Date(date1)), &Some(Bound::Date(date2))).is_ok());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_end() {
-        let start = chrono::Utc::now().date();
-        let end = chrono::Utc::now().date().pred();
+        let start = chrono::Utc::today();
+        let end = chrono::Utc::today().pred();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_current() {
-        let start = chrono::Utc::now().date().succ();
-        let end = chrono::Utc::now().date();
+        let start = chrono::Utc::today().succ();
+        let end = chrono::Utc::today();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_end_after_current() {
-        let start = chrono::Utc::now().date();
-        let end = chrono::Utc::now().date().succ();
+        let start = chrono::Utc::today();
+        let end = chrono::Utc::today().succ();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
+    }
+
+    #[test]
+    fn test_nightly_finder_iterator() {
+        let start_date = Date::from_utc(NaiveDate::from_ymd(2019, 01, 01), Utc);
+
+        let iter = NightlyFinderIter::new(start_date);
+
+        for (date, i) in iter.zip([2, 4, 6, 8, 15, 22, 29, 36, 43, 50, 64, 78]) {
+            assert_eq!(start_date - Duration::days(i), date)
+        }
     }
 }

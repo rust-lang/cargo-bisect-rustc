@@ -1,13 +1,11 @@
-use crate::{Bound, Commit, Error, GitDate};
+use crate::{Bound, Commit, Error, GitDate, git, github};
 
 pub(crate) trait RustRepositoryAccessor {
     /// Maps `bound` to its associated date, looking up its commit if necessary.
     fn bound_to_date(&self, bound: Bound) -> Result<GitDate, Error> {
         match bound {
             Bound::Date(date) => Ok(date),
-            Bound::Commit(ref commit_ref) => {
-                self.commit(commit_ref).map(|commit| commit.date.date())
-            }
+            Bound::Commit(ref commit_ref) => self.commit(commit_ref).map(|commit| commit.date),
         }
     }
 
@@ -22,19 +20,13 @@ pub(crate) trait RustRepositoryAccessor {
     fn commits(&self, start_sha: &str, end_sha: &str) -> Result<Vec<Commit>, Error>;
 }
 
-#[path = "git.rs"]
-mod git;
-
-#[path = "github.rs"]
-mod github;
-
 pub(crate) struct AccessViaLocalGit;
 
 pub(crate) struct AccessViaGithub;
 
 impl RustRepositoryAccessor for AccessViaLocalGit {
     fn commit(&self, commit_ref: &str) -> Result<Commit, Error> {
-        self::git::get_commit(commit_ref)
+        git::get_commit(commit_ref)
     }
     fn commits(&self, start_sha: &str, end_sha: &str) -> Result<Vec<Commit>, Error> {
         let end_sha = if end_sha == "origin/master" {

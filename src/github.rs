@@ -1,8 +1,8 @@
-use failure::Error;
+use failure::{Error, format_err};
 use reqwest::{self, blocking::Client, blocking::Response};
 use serde::{Deserialize, Serialize};
 
-use crate::Commit;
+use crate::{Commit, GitDate, parse_to_utc_date};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GithubCommitComparison {
@@ -26,11 +26,12 @@ struct GithubAuthor {
     name: String,
 }
 
-type GitDate = chrono::DateTime<chrono::Utc>;
-
 impl GithubCommitElem {
     fn date(&self) -> Result<GitDate, Error> {
-        Ok(self.commit.committer.date.parse()?)
+        let (date_str, _) = self.commit.committer.date.split_once("T").ok_or_else(|| {
+            format_err!("commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z")
+        })?;
+        Ok(parse_to_utc_date(date_str)?)
     }
 
     fn git_commit(self) -> Result<Commit, Error> {
@@ -74,9 +75,58 @@ pub(crate) struct CommitsQuery<'a> {
 /// Returns the bors merge commits between the two specified boundaries
 /// (boundaries inclusive).
 
-impl<'a> CommitsQuery<'a> {
+impl CommitsQuery<'_> {
     pub fn get_commits(&self) -> Result<Vec<Commit>, Error> {
-        get_commits(*self)
+        // build up commit sequence, by feeding in `sha` as the starting point, and
+        // working way backwards to max(`self.since_date`, `self.earliest_sha`).
+        let mut commits = Vec::new();
+
+        // focus on Pull Request merges, all authored and committed by bors.
+        let author = "bors";
+
+        let client = Client::builder().default_headers(headers()?).build()?;
+        for page in 1.. {
+            let url = CommitsUrl {
+                page,
+                author,
+                since: self.since_date,
+                sha: self.most_recent_sha,
+            }
+            .url();
+
+            let response: Response = client.get(&url).send()?;
+
+            let action = parse_paged_elems(response, |elem: GithubCommitElem| {
+                let date = elem.date()?;
+                let sha = elem.sha.clone();
+                let summary = elem.commit.message;
+                let commit = Commit { sha, date, summary };
+                commits.push(commit);
+
+                Ok(if elem.sha == self.earliest_sha {
+                    eprintln!(
+                        "ending github query because we found starting sha: {}",
+                        elem.sha
+                    );
+                    Loop::Break
+                } else {
+                    Loop::Next
+                })
+            })?;
+
+            if let Loop::Break = action {
+                break;
+            }
+        }
+
+        eprintln!(
+            "get_commits_between returning commits, len: {}",
+            commits.len()
+        );
+
+        // reverse to obtain chronological order
+        commits.reverse();
+        Ok(commits)
     }
 }
 
@@ -97,7 +147,7 @@ struct CommitDetailsUrl<'a> {
     sha: &'a str,
 }
 
-impl<'a> ToUrl for CommitsUrl<'a> {
+impl ToUrl for CommitsUrl<'_> {
     fn url(&self) -> String {
         format!(
             "https://api.github.com/repos/{OWNER}/{REPO}/commits\
@@ -114,7 +164,7 @@ impl<'a> ToUrl for CommitsUrl<'a> {
     }
 }
 
-impl<'a> ToUrl for CommitDetailsUrl<'a> {
+impl ToUrl for CommitDetailsUrl<'_> {
     fn url(&self) -> String {
         // "origin/master" is set as `sha` when there is no `--end=` definition
         // specified on the command line.  We define the GitHub master branch
@@ -134,92 +184,47 @@ impl<'a> ToUrl for CommitDetailsUrl<'a> {
     }
 }
 
-fn get_commits(q: CommitsQuery) -> Result<Vec<Commit>, Error> {
-    // build up commit sequence, by feeding in `sha` as the starting point, and
-    // working way backwards to max(`q.since_date`, `q.earliest_sha`).
-    let mut commits = Vec::new();
-
-    // focus on Pull Request merges, all authored and committed by bors.
-    let author = "bors";
-
-    let client = Client::builder().default_headers(headers()?).build()?;
-    for page in 1.. {
-        let url = CommitsUrl {
-            page,
-            author,
-            since: q.since_date,
-            sha: q.most_recent_sha,
-        }
-        .url();
-
-        let response: Response = client.get(&url).send()?;
-
-        let action = parse_paged_elems(response, |elem: GithubCommitElem| {
-            let date: chrono::DateTime<chrono::Utc> = match elem.commit.committer.date.parse() {
-                Ok(date) => date,
-                Err(err) => return Loop::Err(err.into()),
-            };
-            let sha = elem.sha.clone();
-            let summary = elem.commit.message;
-            let commit = Commit { sha, date, summary };
-            commits.push(commit);
-
-            if elem.sha == q.earliest_sha {
-                eprintln!(
-                    "ending github query because we found starting sha: {}",
-                    elem.sha
-                );
-                return Loop::Break;
-            }
-
-            Loop::Next
-        })?;
-
-        if let Loop::Break = action {
-            break;
-        }
-    }
-
-    eprintln!(
-        "get_commits_between returning commits, len: {}",
-        commits.len()
-    );
-
-    // reverse to obtain chronological order
-    commits.reverse();
-    Ok(commits)
-}
-
-enum Loop<E> {
+enum Loop {
     Break,
     Next,
-    Err(E),
 }
-enum Void {}
 
-fn parse_paged_elems<Elem: for<'a> serde::Deserialize<'a>>(
+fn parse_paged_elems(
     response: Response,
-    mut k: impl FnMut(Elem) -> Loop<Error>,
-) -> Result<Loop<Void>, Error> {
-    // parse the JSON into an array of the expected Elem type
-    let elems: Vec<Elem> = response.json()?;
+    mut k: impl FnMut(GithubCommitElem) -> Result<Loop, Error>,
+) -> Result<Loop, Error> {
+    let elems: Vec<GithubCommitElem> = response.json()?;
 
     if elems.is_empty() {
         // we've run out of useful pages to lookup
         return Ok(Loop::Break);
     }
 
-    for elem in elems.into_iter() {
-        let act = k(elem);
+    for elem in elems {
+        let act = k(elem)?;
 
         // the callback will tell us if we should terminate loop early (e.g. due to matching `sha`)
         match act {
             Loop::Break => return Ok(Loop::Break),
-            Loop::Err(e) => return Err(e),
             Loop::Next => continue,
         }
     }
 
     // by default, we keep searching on next page from github.
     Ok(Loop::Next)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_github() {
+        let c = get_commit("25674202bb7415e0c0ecd07856749cfb7f591be6").unwrap();
+        let expected_c = Commit { sha: "25674202bb7415e0c0ecd07856749cfb7f591be6".to_string(), 
+                                date: parse_to_utc_date("2022-05-04").unwrap(), 
+                                summary: "Auto merge of #96695 - JohnTitor:rollup-oo4fc1h, r=JohnTitor\n\nRollup of 6 pull requests\n\nSuccessful merges:\n\n - #96597 (openbsd: unbreak build on native platform)\n - #96662 (Fix typo in lint levels doc)\n - #96668 (Fix flaky rustdoc-ui test because it did not replace time result)\n - #96679 (Quick fix for #96223.)\n - #96684 (Update `ProjectionElem::Downcast` documentation)\n - #96686 (Add some TAIT-related tests)\n\nFailed merges:\n\nr? `@ghost`\n`@rustbot` modify labels: rollup".to_string()
+                            };
+        assert_eq!(c, expected_c)
+    }
 }

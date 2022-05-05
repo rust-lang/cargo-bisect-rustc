@@ -20,7 +20,7 @@ impl Commit {
     fn from_git2_commit(commit: &mut Git2Commit<'_>) -> Self {
         Commit {
             sha: commit.id().to_string(),
-            date: Utc.timestamp(commit.time().seconds(), 0),
+            date: Utc.timestamp(commit.time().seconds(), 0).date(),
             summary: String::from_utf8_lossy(commit.summary_bytes().unwrap()).to_string(),
         }
     }
@@ -51,8 +51,7 @@ fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> Result<Git2Commit<'rev>
         .id();
     let revision_id = revision
         .as_tag()
-        .map(|tag| tag.target_id())
-        .unwrap_or_else(|| revision.id());
+        .map_or_else(|| revision.id(), git2::Tag::target_id);
 
     let common_base = repo.merge_base(master_id, revision_id)?;
 
@@ -109,13 +108,8 @@ fn find_origin_remote(repo: &Repository) -> Result<String, Error> {
     repo.remotes()?
         .iter()
         .filter_map(|name| name.and_then(|name| repo.find_remote(name).ok()))
-        .find(|remote| {
-            remote
-                .url()
-                .map(|url| url.contains(RUST_SRC_URL))
-                .unwrap_or(false)
-        })
-        .and_then(|remote| remote.name().map(|name| name.to_string()))
+        .find(|remote| remote.url().map_or(false, |url| url.contains(RUST_SRC_URL)))
+        .and_then(|remote| remote.name().map(std::string::ToString::to_string))
         .ok_or_else(|| {
             failure::format_err!(
                 "rust-lang/rust remote not found. \
