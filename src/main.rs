@@ -181,17 +181,12 @@ enum Bound {
     Date(GitDate),
 }
 
-#[derive(thiserror::Error, Debug)]
-#[error("will never happen")]
-struct BoundParseError {}
-
 impl FromStr for Bound {
-    type Err = BoundParseError;
-    fn from_str(s: &str) -> Result<Bound, BoundParseError> {
-        match NaiveDate::parse_from_str(s, YYYY_MM_DD) {
-            Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
-            Err(_) => Ok(Bound::Commit(s.to_string())),
-        }
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_to_utc_date(s)
+            .map(Self::Date)
+            .or_else(|_| Ok(Self::Commit(s.to_string())))
     }
 }
 
