@@ -280,7 +280,7 @@ impl Toolchain {
         cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
 
         // let `cmd` capture stderr for us to process afterward.
-        let must_capture_output = cfg.regress_on().must_process_stderr();
+        let must_capture_output = cfg.args.regress.must_process_stderr();
         let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
 
         let default_stdio = if must_capture_output {

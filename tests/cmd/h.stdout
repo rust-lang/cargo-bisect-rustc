@@ -22,7 +22,8 @@ OPTIONS:
         --preserve                  Preserve the downloaded artifacts
         --preserve-target           Preserve the target directory used for builds
         --prompt                    Manually evaluate for regression with prompts
-        --regress <REGRESS>         Custom regression definition [default: error]
+        --regress <REGRESS>         Custom regression definition [default: error] [possible values:
+                                    error, success, ice, non-ice, non-error]
         --script <SCRIPT>           Script replacement for `cargo build` command
         --start <START>             Left bound for search (*without* regression). You can use a date
                                     (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.

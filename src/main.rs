@@ -14,7 +14,7 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
-use clap::Parser;
+use clap::{ArgEnum, Parser, PossibleValue};
 use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
@@ -76,12 +76,11 @@ const REPORT_HEADER: &str = "\
 struct Opts {
     #[clap(
         long,
-        default_value = "error",
         help = "Custom regression definition",
-        long_help = "Custom regression definition \
-                     [error|non-error|ice|non-ice|success]"
+        arg_enum,
+        default_value_t = RegressOn::ErrorStatus,
     )]
-    regress: String,
+    regress: RegressOn,
 
     #[clap(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
@@ -249,7 +248,7 @@ impl Config {
         let saw_ice = stderr_utf8.contains("error: internal compiler error")
             || stderr_utf8.contains("thread 'rustc' has overflowed its stack");
 
-        let input = (self.regress_on(), status.success());
+        let input = (self.args.regress, status.success());
         let result = match input {
             (RegressOn::ErrorStatus, true) | (RegressOn::SuccessStatus, false) => {
                 TestOutcome::Baseline
@@ -276,17 +275,6 @@ impl Config {
             input, result
         );
         result
-    }
-
-    fn regress_on(&self) -> RegressOn {
-        match self.args.regress.as_str() {
-            "error" => RegressOn::ErrorStatus,
-            "non-error" => RegressOn::NonCleanError,
-            "ice" => RegressOn::IceAlone,
-            "non-ice" => RegressOn::NotIce,
-            "success" => RegressOn::SuccessStatus,
-            setting => panic!("Unknown --regress setting: {:?}", setting),
-        }
     }
 }
 
@@ -343,6 +331,27 @@ enum RegressOn {
     ///
     /// You explicitly opt into this seting via `--regress=non-error`.
     NonCleanError,
+}
+
+impl ArgEnum for RegressOn {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[
+            Self::ErrorStatus,
+            Self::SuccessStatus,
+            Self::IceAlone,
+            Self::NotIce,
+            Self::NonCleanError,
+        ]
+    }
+    fn to_possible_value<'a>(&self) -> Option<PossibleValue<'a>> {
+        Some(PossibleValue::new(match self {
+            Self::ErrorStatus => "error",
+            Self::NonCleanError => "non-error",
+            Self::IceAlone => "ice",
+            Self::NotIce => "non-ice",
+            Self::SuccessStatus => "success",
+        }))
+    }
 }
 
 impl RegressOn {
