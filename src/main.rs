@@ -152,8 +152,8 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[clap(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[clap(long, help = "How to access Rust git repository [github|checkout]")]
-    access: Option<String>,
+    #[clap(long, arg_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
+    access: Access,
 
     #[clap(long, help = "Install the given artifact")]
     install: Option<Bound>,
@@ -278,6 +278,21 @@ impl Config {
     }
 }
 
+#[derive(ArgEnum, Clone, Debug)]
+enum Access {
+    Checkout,
+    Github,
+}
+
+impl Access {
+    fn repo(&self) -> Box<dyn RustRepositoryAccessor> {
+        match self {
+            Self::Checkout => Box::new(AccessViaLocalGit),
+            Self::Github => Box::new(AccessViaGithub),
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 /// Customize what is treated as regression.
 enum RegressOn {
@@ -369,7 +384,6 @@ struct Config {
     toolchains_path: PathBuf,
     target: String,
     is_commit: bool,
-    repo_access: Box<dyn RustRepositoryAccessor>,
 }
 
 impl Config {
@@ -439,19 +453,12 @@ impl Config {
             }
         }
 
-        let repo_access: Box<dyn RustRepositoryAccessor> = match args.access.as_deref() {
-            None | Some("checkout") => Box::new(AccessViaLocalGit),
-            Some("github") => Box::new(AccessViaGithub),
-            Some(other) => bail!("unknown access argument: {}", other),
-        };
-
         Ok(Config {
             is_commit: args.by_commit || is_commit == Some(true),
             args,
             target,
             toolchains_path,
             rustup_tmp_path,
-            repo_access,
         })
     }
 }
@@ -507,7 +514,7 @@ fn run() -> anyhow::Result<()> {
 fn install(cfg: &Config, client: &Client, bound: &Bound) -> anyhow::Result<()> {
     match *bound {
         Bound::Commit(ref sha) => {
-            let sha = cfg.repo_access.commit(sha)?.sha;
+            let sha = cfg.args.access.repo().commit(sha)?.sha;
             let mut t = Toolchain {
                 spec: ToolchainSpec::Ci {
                     commit: sha,
@@ -558,8 +565,7 @@ fn bisect(cfg: &Config, client: &Client) -> anyhow::Result<()> {
                 date.format(YYYY_MM_DD),
             );
 
-            let ci_bisection_result =
-                bisect_ci_via(cfg, client, &*cfg.repo_access, &working_commit, &bad_commit)?;
+            let ci_bisection_result = bisect_ci_via(cfg, client, &working_commit, &bad_commit)?;
 
             print_results(cfg, client, &ci_bisection_result);
             print_final_report(cfg, &nightly_bisection_result, &ci_bisection_result);
@@ -1007,16 +1013,16 @@ fn bisect_ci(cfg: &Config, client: &Client) -> anyhow::Result<BisectionResult> {
 
     eprintln!("starting at {}, ending at {}", start, end);
 
-    bisect_ci_via(cfg, client, &*cfg.repo_access, start, end)
+    bisect_ci_via(cfg, client, start, end)
 }
 
 fn bisect_ci_via(
     cfg: &Config,
     client: &Client,
-    access: &dyn RustRepositoryAccessor,
     start_sha: &str,
     end_ref: &str,
 ) -> anyhow::Result<BisectionResult> {
+    let access = cfg.args.access.repo();
     let end_sha = access.commit(end_ref)?.sha;
     let commits = access.commits(start_sha, &end_sha)?;
 

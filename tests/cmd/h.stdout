@@ -10,7 +10,8 @@ ARGS:
 
 OPTIONS:
     -a, --alt                       Download the alt build instead of normal build
-        --access <ACCESS>           How to access Rust git repository [github|checkout]
+        --access <ACCESS>           How to access Rust git repository [default: checkout] [possible
+                                    values: checkout, github]
         --by-commit                 Bisect via commit artifacts
     -c, --component <COMPONENTS>    additional components to install
         --end <END>                 Right bound for search (*with* regression). You can use a date
