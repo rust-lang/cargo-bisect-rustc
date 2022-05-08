@@ -453,14 +453,12 @@ pub(crate) fn download_progress(
 ) -> Result<TeeReader<Response, ProgressBar<io::Stdout>>, DownloadError> {
     debug!("downloading <{}>...", url);
 
-    let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
+    let response = client.get(url).send()?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(DownloadError::NotFound(url.to_string()));
     }
-    let response = response
-        .error_for_status()
-        .map_err(DownloadError::Reqwest)?;
+    let response = response.error_for_status()?;
 
     let length = response
         .headers()
