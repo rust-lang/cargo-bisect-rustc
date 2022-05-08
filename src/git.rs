@@ -113,8 +113,7 @@ fn find_origin_remote(repo: &Repository) -> anyhow::Result<String> {
         .with_context(|| {
             format!(
                 "rust-lang/rust remote not found. \
-Try adding a remote pointing to `{}` in the rust repository at `{}`.",
-                RUST_SRC_URL,
+Try adding a remote pointing to `{RUST_SRC_URL}` in the rust repository at `{}`.",
                 repo.path().display()
             )
         })

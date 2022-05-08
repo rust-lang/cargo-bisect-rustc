@@ -195,19 +195,17 @@ impl Bound {
             Bound::Commit(commit) => Ok(commit.clone()),
             Bound::Date(date) => {
                 let date_str = date.format(YYYY_MM_DD);
-                let url = format!(
-                    "{}/{}/channel-rust-nightly-git-commit-hash.txt",
-                    NIGHTLY_SERVER, date_str
-                );
+                let url =
+                    format!("{NIGHTLY_SERVER}/{date_str}/channel-rust-nightly-git-commit-hash.txt");
 
-                eprintln!("fetching {}", url);
+                eprintln!("fetching {url}");
                 let client = Client::new();
-                let name = format!("nightly manifest {}", date_str);
+                let name = format!("nightly manifest {date_str}");
                 let mut response = download_progress(&client, &name, &url)?;
                 let mut commit = String::new();
                 response.read_to_string(&mut commit)?;
 
-                eprintln!("converted {} to {}", date_str, commit);
+                eprintln!("converted {date_str} to {commit}");
 
                 Ok(commit)
             }

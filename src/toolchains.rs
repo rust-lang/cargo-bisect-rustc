@@ -73,7 +73,7 @@ impl Toolchain {
                 } else {
                     String::new()
                 };
-                format!("bisector-ci-{}{}-{}", commit, alt_s, self.host)
+                format!("bisector-ci-{commit}{alt_s}-{}", self.host)
             }
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
@@ -107,7 +107,7 @@ impl Toolchain {
         client: &Client,
         dl_params: &DownloadParams,
     ) -> Result<(), InstallError> {
-        let tc_stdstream_str = format!("{}", self);
+        let tc_stdstream_str = format!("{self}");
         eprintln!("installing {}", tc_stdstream_str.green());
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
@@ -177,20 +177,20 @@ impl Toolchain {
                     // rust-src is target-independent
                     "rust-src-nightly".to_string()
                 } else {
-                    format!("{}-nightly-{}", component, self.host)
+                    format!("{component}-nightly-{}", self.host)
                 }
             })
             .chain(
                 self.std_targets
                     .iter()
-                    .map(|target| format!("rust-std-nightly-{}", target)),
+                    .map(|target| format!("rust-std-nightly-{target}")),
             );
 
         for component in components {
             download_tarball(
                 client,
                 &component,
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, component),
+                &format!("{}/{location}/{component}.tar", dl_params.url_prefix),
                 tmpdir.path(),
             )
             .map_err(|e| {
@@ -391,8 +391,7 @@ pub(crate) struct DownloadParams {
 impl DownloadParams {
     pub(crate) fn for_ci(cfg: &Config) -> Self {
         let url_prefix = format!(
-            "{}/rustc-builds{}",
-            CI_SERVER,
+            "{CI_SERVER}/rustc-builds{}",
             if cfg.args.alt { "-alt" } else { "" }
         );
 
@@ -527,9 +526,9 @@ fn download_tarball(
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    match download_tar_xz(client, name, &format!("{}.xz", url,), dest) {
+    match download_tar_xz(client, name, &format!("{url}.xz"), dest) {
         Err(DownloadError::NotFound { .. }) => {
-            download_tar_gz(client, name, &format!("{}.gz", url,), dest)
+            download_tar_gz(client, name, &format!("{url}.gz"), dest)
         }
         res => res,
     }

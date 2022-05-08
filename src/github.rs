@@ -53,7 +53,7 @@ fn headers() -> Result<HeaderMap, InvalidHeaderValue> {
     headers.insert(USER_AGENT, user_agent);
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         eprintln!("adding local env GITHUB_TOKEN value to headers in github query");
-        let value = HeaderValue::from_str(&format!("token {}", token))?;
+        let value = HeaderValue::from_str(&format!("token {token}"))?;
         headers.insert(AUTHORIZATION, value);
     }
     Ok(headers)
@@ -153,15 +153,12 @@ impl ToUrl for CommitsUrl<'_> {
     fn url(&self) -> String {
         format!(
             "https://api.github.com/repos/{OWNER}/{REPO}/commits\
-                 ?page={PAGE}&per_page={PER_PAGE}\
-                 &author={AUTHOR}&since={SINCE}&sha={SHA}",
-            OWNER = OWNER,
-            REPO = REPO,
-            PAGE = self.page,
-            PER_PAGE = PER_PAGE,
-            AUTHOR = self.author,
-            SINCE = self.since,
-            SHA = self.sha
+                 ?page={page}&per_page={PER_PAGE}\
+                 &author={author}&since={since}&sha={sha}",
+            page = self.page,
+            author = self.author,
+            since = self.since,
+            sha = self.sha
         )
     }
 }
@@ -177,12 +174,7 @@ impl ToUrl for CommitDetailsUrl<'_> {
             self.sha
         };
 
-        format!(
-            "https://api.github.com/repos/{OWNER}/{REPO}/compare/master...{REF}",
-            OWNER = OWNER,
-            REPO = REPO,
-            REF = reference
-        )
+        format!("https://api.github.com/repos/{OWNER}/{REPO}/compare/master...{reference}")
     }
 }
 
