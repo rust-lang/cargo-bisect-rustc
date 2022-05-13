@@ -420,6 +420,7 @@ struct Config {
     toolchains_path: PathBuf,
     target: String,
     is_commit: bool,
+    client: Client,
 }
 
 impl Config {
@@ -478,6 +479,7 @@ impl Config {
             target,
             toolchains_path,
             rustup_tmp_path,
+            client: Client::new(),
         })
     }
 }
@@ -521,77 +523,78 @@ fn run() -> anyhow::Result<()> {
     check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
 
-    let client = Client::new();
-
     if let Some(ref bound) = cfg.args.install {
-        install(&cfg, &client, bound)
+        cfg.install(bound)
     } else {
-        bisect(&cfg, &client)
+        cfg.bisect()
     }
 }
 
-fn install(cfg: &Config, client: &Client, bound: &Bound) -> anyhow::Result<()> {
-    match *bound {
-        Bound::Commit(ref sha) => {
-            let sha = cfg.args.access.repo().commit(sha)?.sha;
-            let mut t = Toolchain {
-                spec: ToolchainSpec::Ci {
-                    commit: sha,
-                    alt: cfg.args.alt,
-                },
-                host: cfg.args.host.clone(),
-                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-            };
-            t.std_targets.sort();
-            t.std_targets.dedup();
-            let dl_params = DownloadParams::for_ci(cfg);
-            t.install(client, &dl_params)?;
+impl Config {
+    fn install(&self, bound: &Bound) -> anyhow::Result<()> {
+        match *bound {
+            Bound::Commit(ref sha) => {
+                let sha = self.args.access.repo().commit(sha)?.sha;
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Ci {
+                        commit: sha,
+                        alt: self.args.alt,
+                    },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                let dl_params = DownloadParams::for_ci(self);
+                t.install(&self.client, &dl_params)?;
+            }
+            Bound::Date(date) => {
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Nightly { date },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                let dl_params = DownloadParams::for_nightly(self);
+                t.install(&self.client, &dl_params)?;
+            }
         }
-        Bound::Date(date) => {
-            let mut t = Toolchain {
-                spec: ToolchainSpec::Nightly { date },
-                host: cfg.args.host.clone(),
-                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-            };
-            t.std_targets.sort();
-            t.std_targets.dedup();
-            let dl_params = DownloadParams::for_nightly(cfg);
-            t.install(client, &dl_params)?;
-        }
+
+        Ok(())
     }
 
-    Ok(())
-}
+    // bisection entry point
+    fn bisect(&self) -> anyhow::Result<()> {
+        if self.is_commit {
+            let bisection_result = self.bisect_ci()?;
+            self.print_results(&bisection_result);
+        } else {
+            let nightly_bisection_result = self.bisect_nightlies()?;
+            self.print_results(&nightly_bisection_result);
+            let nightly_regression =
+                &nightly_bisection_result.searched[nightly_bisection_result.found];
 
-// bisection entry point
-fn bisect(cfg: &Config, client: &Client) -> anyhow::Result<()> {
-    if cfg.is_commit {
-        let bisection_result = bisect_ci(cfg, client)?;
-        print_results(cfg, client, &bisection_result);
-    } else {
-        let nightly_bisection_result = bisect_nightlies(cfg, client)?;
-        print_results(cfg, client, &nightly_bisection_result);
-        let nightly_regression = &nightly_bisection_result.searched[nightly_bisection_result.found];
+            if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
+                let previous_date = date.pred();
 
-        if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
-            let previous_date = date.pred();
+                let working_commit = Bound::Date(previous_date).sha()?;
+                let bad_commit = Bound::Date(date).sha()?;
+                eprintln!(
+                    "looking for regression commit between {} and {}",
+                    previous_date.format(YYYY_MM_DD),
+                    date.format(YYYY_MM_DD),
+                );
 
-            let working_commit = Bound::Date(previous_date).sha()?;
-            let bad_commit = Bound::Date(date).sha()?;
-            eprintln!(
-                "looking for regression commit between {} and {}",
-                previous_date.format(YYYY_MM_DD),
-                date.format(YYYY_MM_DD),
-            );
+                let ci_bisection_result = self.bisect_ci_via(&working_commit, &bad_commit)?;
 
-            let ci_bisection_result = bisect_ci_via(cfg, client, &working_commit, &bad_commit)?;
-
-            print_results(cfg, client, &ci_bisection_result);
-            print_final_report(cfg, &nightly_bisection_result, &ci_bisection_result);
+                self.print_results(&ci_bisection_result);
+                print_final_report(self, &nightly_bisection_result, &ci_bisection_result);
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
 
 fn searched_range(
@@ -621,50 +624,54 @@ fn searched_range(
     }
 }
 
-fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
-    let BisectionResult {
-        searched: toolchains,
-        dl_spec,
-        found,
-    } = bisection_result;
+impl Config {
+    fn print_results(&self, bisection_result: &BisectionResult) {
+        let BisectionResult {
+            searched: toolchains,
+            dl_spec,
+            found,
+        } = bisection_result;
 
-    let (start, end) = searched_range(cfg, toolchains);
+        let (start, end) = searched_range(self, toolchains);
 
-    eprintln!("searched toolchains {} through {}", start, end);
+        eprintln!("searched toolchains {} through {}", start, end);
 
-    if toolchains[*found] == *toolchains.last().unwrap() {
-        let t = &toolchains[*found];
-        let r = match t.install(client, dl_spec) {
-            Ok(()) => {
-                let outcome = t.test(cfg);
-                remove_toolchain(cfg, t, dl_spec);
-                // we want to fail, so a successful build doesn't satisfy us
-                match outcome {
-                    TestOutcome::Baseline => Satisfies::No,
-                    TestOutcome::Regressed => Satisfies::Yes,
+        if toolchains[*found] == *toolchains.last().unwrap() {
+            let t = &toolchains[*found];
+            let r = match t.install(&self.client, dl_spec) {
+                Ok(()) => {
+                    let outcome = t.test(self);
+                    remove_toolchain(self, t, dl_spec);
+                    // we want to fail, so a successful build doesn't satisfy us
+                    match outcome {
+                        TestOutcome::Baseline => Satisfies::No,
+                        TestOutcome::Regressed => Satisfies::Yes,
+                    }
+                }
+                Err(_) => {
+                    let _ = t.remove(dl_spec);
+                    Satisfies::Unknown
+                }
+            };
+            match r {
+                Satisfies::Yes => {}
+                Satisfies::No | Satisfies::Unknown => {
+                    eprintln!(
+                        "error: The regression was not found. Expanding the bounds may help."
+                    );
+                    return;
                 }
             }
-            Err(_) => {
-                let _ = t.remove(dl_spec);
-                Satisfies::Unknown
-            }
-        };
-        match r {
-            Satisfies::Yes => {}
-            Satisfies::No | Satisfies::Unknown => {
-                eprintln!("error: The regression was not found. Expanding the bounds may help.");
-                return;
-            }
         }
-    }
 
-    let tc_found = format!("Regression in {}", toolchains[*found]);
-    eprintln!();
-    eprintln!();
-    eprintln!("{}", "*".repeat(80).dimmed().bold());
-    eprintln!("{}", tc_found.red());
-    eprintln!("{}", "*".repeat(80).dimmed().bold());
-    eprintln!();
+        let tc_found = format!("Regression in {}", toolchains[*found]);
+        eprintln!();
+        eprintln!();
+        eprintln!("{}", "*".repeat(80).dimmed().bold());
+        eprintln!("{}", tc_found.red());
+        eprintln!("{}", "*".repeat(80).dimmed().bold());
+        eprintln!();
+    }
 }
 
 fn remove_toolchain(cfg: &Config, toolchain: &Toolchain, dl_params: &DownloadParams) {
@@ -805,41 +812,38 @@ impl Iterator for NightlyFinderIter {
     }
 }
 
-fn install_and_test(
-    t: &Toolchain,
-    cfg: &Config,
-    client: &Client,
-    dl_spec: &DownloadParams,
-) -> Result<Satisfies, InstallError> {
-    match t.install(client, dl_spec) {
-        Ok(()) => {
-            let outcome = t.test(cfg);
-            // we want to fail, so a successful build doesn't satisfy us
-            let r = match outcome {
-                TestOutcome::Baseline => Satisfies::No,
-                TestOutcome::Regressed => Satisfies::Yes,
-            };
-            eprintln!("RESULT: {}, ===> {}", t, r);
-            remove_toolchain(cfg, t, dl_spec);
-            eprintln!();
-            Ok(r)
-        }
-        Err(error) => {
-            remove_toolchain(cfg, t, dl_spec);
-            Err(error)
+impl Config {
+    fn install_and_test(
+        &self,
+        t: &Toolchain,
+        dl_spec: &DownloadParams,
+    ) -> Result<Satisfies, InstallError> {
+        match t.install(&self.client, dl_spec) {
+            Ok(()) => {
+                let outcome = t.test(self);
+                // we want to fail, so a successful build doesn't satisfy us
+                let r = match outcome {
+                    TestOutcome::Baseline => Satisfies::No,
+                    TestOutcome::Regressed => Satisfies::Yes,
+                };
+                eprintln!("RESULT: {}, ===> {}", t, r);
+                remove_toolchain(self, t, dl_spec);
+                eprintln!();
+                Ok(r)
+            }
+            Err(error) => {
+                remove_toolchain(self, t, dl_spec);
+                Err(error)
+            }
         }
     }
-}
 
-fn bisect_to_regression(
-    toolchains: &[Toolchain],
-    cfg: &Config,
-    client: &Client,
-    dl_spec: &DownloadParams,
-) -> usize {
-    least_satisfying(toolchains, |t| {
-        install_and_test(t, cfg, client, dl_spec).unwrap_or(Satisfies::Unknown)
-    })
+    fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
+        least_satisfying(toolchains, |t| {
+            self.install_and_test(t, dl_spec)
+                .unwrap_or(Satisfies::Unknown)
+        })
+    }
 }
 
 fn get_start_date(cfg: &Config) -> Date<Utc> {
@@ -864,132 +868,134 @@ fn date_is_future(test_date: Date<Utc>) -> bool {
     test_date > Utc::today()
 }
 
-// nightlies branch of bisect execution
-fn bisect_nightlies(cfg: &Config, client: &Client) -> anyhow::Result<BisectionResult> {
-    if cfg.args.alt {
-        bail!("cannot bisect nightlies with --alt: not supported");
-    }
+impl Config {
+    // nightlies branch of bisect execution
+    fn bisect_nightlies(&self) -> anyhow::Result<BisectionResult> {
+        if self.args.alt {
+            bail!("cannot bisect nightlies with --alt: not supported");
+        }
 
-    let dl_spec = DownloadParams::for_nightly(cfg);
+        let dl_spec = DownloadParams::for_nightly(self);
 
-    // before this date we didn't have -std packages
-    let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
-    let mut first_success = None;
+        // before this date we didn't have -std packages
+        let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
+        let mut first_success = None;
 
-    let mut nightly_date = get_start_date(cfg);
-    let mut last_failure = get_end_date(cfg);
-    let has_start = cfg.args.start.is_some();
+        let mut nightly_date = get_start_date(self);
+        let mut last_failure = get_end_date(self);
+        let has_start = self.args.start.is_some();
 
-    // validate start and end dates to confirm that they are not future dates
-    // start date validation
-    if has_start && date_is_future(nightly_date) {
-        bail!(
-            "start date must be on or before the current date. received start date request {}",
-            nightly_date
-        )
-    }
-    // end date validation
-    if date_is_future(last_failure) {
-        bail!(
-            "end date must be on or before the current date. received end date request {}",
-            nightly_date
-        )
-    }
+        // validate start and end dates to confirm that they are not future dates
+        // start date validation
+        if has_start && date_is_future(nightly_date) {
+            bail!(
+                "start date must be on or before the current date. received start date request {}",
+                nightly_date
+            )
+        }
+        // end date validation
+        if date_is_future(last_failure) {
+            bail!(
+                "end date must be on or before the current date. received end date request {}",
+                nightly_date
+            )
+        }
 
-    let mut nightly_iter = NightlyFinderIter::new(nightly_date);
+        let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
-    // this loop tests nightly toolchains to:
-    // (1) validate that start date does not have regression (if defined on command line)
-    // (2) identify a nightly date range for the bisection routine
-    //
-    // The tests here must be constrained to dates after 2015-10-20 (`end_at` date)
-    // because -std packages were not available prior
-    while nightly_date > end_at {
-        let mut t = Toolchain {
-            spec: ToolchainSpec::Nightly { date: nightly_date },
-            host: cfg.args.host.clone(),
-            std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-        };
-        t.std_targets.sort();
-        t.std_targets.dedup();
-        if t.is_current_nightly() {
-            eprintln!(
-                "checking {} from the currently installed default nightly \
+        // this loop tests nightly toolchains to:
+        // (1) validate that start date does not have regression (if defined on command line)
+        // (2) identify a nightly date range for the bisection routine
+        //
+        // The tests here must be constrained to dates after 2015-10-20 (`end_at` date)
+        // because -std packages were not available prior
+        while nightly_date > end_at {
+            let mut t = Toolchain {
+                spec: ToolchainSpec::Nightly { date: nightly_date },
+                host: self.args.host.clone(),
+                std_targets: vec![self.args.host.clone(), self.target.clone()],
+            };
+            t.std_targets.sort();
+            t.std_targets.dedup();
+            if t.is_current_nightly() {
+                eprintln!(
+                    "checking {} from the currently installed default nightly \
                        toolchain as the last failure",
-                t
+                    t
+                );
+            }
+
+            match self.install_and_test(&t, &dl_spec) {
+                Ok(r) => {
+                    // If Satisfies::No, then the regression was not identified in this nightly.
+                    // Break out of the loop and use this as the start date for the
+                    // bisection range
+                    if r == Satisfies::No {
+                        first_success = Some(nightly_date);
+                        break;
+                    } else if has_start {
+                        // If this date was explicitly defined on the command line &
+                        // has regression, then this is an error in the test definition.
+                        // The user must re-define the start date and try again
+                        bail!(
+                            "the start of the range ({}) must not reproduce the regression",
+                            t
+                        );
+                    }
+                    last_failure = nightly_date;
+                    nightly_date = nightly_iter.next().unwrap();
+                }
+                Err(InstallError::NotFound { .. }) => {
+                    // go back just one day, presumably missing a nightly
+                    nightly_date = nightly_date.pred();
+                    eprintln!(
+                        "*** unable to install {}. roll back one day and try again...",
+                        t
+                    );
+                    if has_start {
+                        bail!("could not find {}", t);
+                    }
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        let first_success = first_success.context("could not find a nightly that built")?;
+
+        // confirm that the end of the date range has the regression
+        let mut t_end = Toolchain {
+            spec: ToolchainSpec::Nightly { date: last_failure },
+            host: self.args.host.clone(),
+            std_targets: vec![self.args.host.clone(), self.target.clone()],
+        };
+        t_end.std_targets.sort();
+        t_end.std_targets.dedup();
+
+        let result_nightly = self.install_and_test(&t_end, &dl_spec)?;
+        // The regression was not identified in this nightly.
+        if result_nightly == Satisfies::No {
+            bail!(
+                "the end of the range ({}) does not reproduce the regression",
+                t_end
             );
         }
 
-        match install_and_test(&t, cfg, client, &dl_spec) {
-            Ok(r) => {
-                // If Satisfies::No, then the regression was not identified in this nightly.
-                // Break out of the loop and use this as the start date for the
-                // bisection range
-                if r == Satisfies::No {
-                    first_success = Some(nightly_date);
-                    break;
-                } else if has_start {
-                    // If this date was explicitly defined on the command line &
-                    // has regression, then this is an error in the test definition.
-                    // The user must re-define the start date and try again
-                    bail!(
-                        "the start of the range ({}) must not reproduce the regression",
-                        t
-                    );
-                }
-                last_failure = nightly_date;
-                nightly_date = nightly_iter.next().unwrap();
-            }
-            Err(InstallError::NotFound { .. }) => {
-                // go back just one day, presumably missing a nightly
-                nightly_date = nightly_date.pred();
-                eprintln!(
-                    "*** unable to install {}. roll back one day and try again...",
-                    t
-                );
-                if has_start {
-                    bail!("could not find {}", t);
-                }
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
-
-    let first_success = first_success.context("could not find a nightly that built")?;
-
-    // confirm that the end of the date range has the regression
-    let mut t_end = Toolchain {
-        spec: ToolchainSpec::Nightly { date: last_failure },
-        host: cfg.args.host.clone(),
-        std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-    };
-    t_end.std_targets.sort();
-    t_end.std_targets.dedup();
-
-    let result_nightly = install_and_test(&t_end, cfg, client, &dl_spec)?;
-    // The regression was not identified in this nightly.
-    if result_nightly == Satisfies::No {
-        bail!(
-            "the end of the range ({}) does not reproduce the regression",
-            t_end
+        let toolchains = toolchains_between(
+            self,
+            ToolchainSpec::Nightly {
+                date: first_success,
+            },
+            ToolchainSpec::Nightly { date: last_failure },
         );
+
+        let found = self.bisect_to_regression(&toolchains, &dl_spec);
+
+        Ok(BisectionResult {
+            dl_spec,
+            searched: toolchains,
+            found,
+        })
     }
-
-    let toolchains = toolchains_between(
-        cfg,
-        ToolchainSpec::Nightly {
-            date: first_success,
-        },
-        ToolchainSpec::Nightly { date: last_failure },
-    );
-
-    let found = bisect_to_regression(&toolchains, cfg, client, &dl_spec);
-
-    Ok(BisectionResult {
-        dl_spec,
-        searched: toolchains,
-        found,
-    })
 }
 
 fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<Toolchain> {
@@ -1015,133 +1021,129 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
     }
 }
 
-// CI branch of bisect execution
-fn bisect_ci(cfg: &Config, client: &Client) -> anyhow::Result<BisectionResult> {
-    eprintln!("bisecting ci builds");
-    let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
-        sha
-    } else {
-        EPOCH_COMMIT
-    };
+impl Config {
+    // CI branch of bisect execution
+    fn bisect_ci(&self) -> anyhow::Result<BisectionResult> {
+        eprintln!("bisecting ci builds");
+        let start = if let Some(Bound::Commit(ref sha)) = self.args.start {
+            sha
+        } else {
+            EPOCH_COMMIT
+        };
 
-    let end = if let Some(Bound::Commit(ref sha)) = cfg.args.end {
-        sha
-    } else {
-        "origin/master"
-    };
+        let end = if let Some(Bound::Commit(ref sha)) = self.args.end {
+            sha
+        } else {
+            "origin/master"
+        };
 
-    eprintln!("starting at {}, ending at {}", start, end);
+        eprintln!("starting at {}, ending at {}", start, end);
 
-    bisect_ci_via(cfg, client, start, end)
-}
+        self.bisect_ci_via(start, end)
+    }
 
-fn bisect_ci_via(
-    cfg: &Config,
-    client: &Client,
-    start_sha: &str,
-    end_ref: &str,
-) -> anyhow::Result<BisectionResult> {
-    let access = cfg.args.access.repo();
-    let end_sha = access.commit(end_ref)?.sha;
-    let commits = access.commits(start_sha, &end_sha)?;
+    fn bisect_ci_via(&self, start_sha: &str, end_ref: &str) -> anyhow::Result<BisectionResult> {
+        let access = self.args.access.repo();
+        let end_sha = access.commit(end_ref)?.sha;
+        let commits = access.commits(start_sha, &end_sha)?;
 
-    assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
+        assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
 
-    commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
-        let sorted_by_date = a.date <= b.date;
-        assert!(
-            sorted_by_date,
-            "commits must chronologically ordered,\
+        commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
+            let sorted_by_date = a.date <= b.date;
+            assert!(
+                sorted_by_date,
+                "commits must chronologically ordered,\
                                  but {:?} comes after {:?}",
-            a, b
-        );
-        sorted_by_date
-    });
+                a, b
+            );
+            sorted_by_date
+        });
 
-    for (j, commit) in commits.iter().enumerate() {
-        eprintln!(
-            "  commit[{}] {}: {}",
-            j,
-            commit.date,
-            commit.summary.split('\n').next().unwrap()
-        )
-    }
-
-    bisect_ci_in_commits(cfg, client, start_sha, &end_sha, commits)
-}
-
-fn bisect_ci_in_commits(
-    cfg: &Config,
-    client: &Client,
-    start: &str,
-    end: &str,
-    mut commits: Vec<Commit>,
-) -> anyhow::Result<BisectionResult> {
-    let dl_spec = DownloadParams::for_ci(cfg);
-    commits.retain(|c| Utc::today() - c.date < Duration::days(167));
-
-    if commits.is_empty() {
-        bail!(
-            "no CI builds available between {} and {} within last 167 days",
-            start,
-            end
-        );
-    }
-
-    if let Some(c) = commits.last() {
-        if end != "origin/master" && !c.sha.starts_with(end) {
-            bail!("expected to end with {}, but ended with {}", end, c.sha);
+        for (j, commit) in commits.iter().enumerate() {
+            eprintln!(
+                "  commit[{}] {}: {}",
+                j,
+                commit.date,
+                commit.summary.split('\n').next().unwrap()
+            )
         }
+
+        self.bisect_ci_in_commits(start_sha, &end_sha, commits)
     }
 
-    eprintln!("validated commits found, specifying toolchains");
-    eprintln!();
+    fn bisect_ci_in_commits(
+        &self,
+        start: &str,
+        end: &str,
+        mut commits: Vec<Commit>,
+    ) -> anyhow::Result<BisectionResult> {
+        let dl_spec = DownloadParams::for_ci(self);
+        commits.retain(|c| Utc::today() - c.date < Duration::days(167));
 
-    let toolchains = commits
-        .into_iter()
-        .map(|commit| {
-            let mut t = Toolchain {
-                spec: ToolchainSpec::Ci {
-                    commit: commit.sha,
-                    alt: cfg.args.alt,
-                },
-                host: cfg.args.host.clone(),
-                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-            };
-            t.std_targets.sort();
-            t.std_targets.dedup();
-            t
+        if commits.is_empty() {
+            bail!(
+                "no CI builds available between {} and {} within last 167 days",
+                start,
+                end
+            );
+        }
+
+        if let Some(c) = commits.last() {
+            if end != "origin/master" && !c.sha.starts_with(end) {
+                bail!("expected to end with {}, but ended with {}", end, c.sha);
+            }
+        }
+
+        eprintln!("validated commits found, specifying toolchains");
+        eprintln!();
+
+        let toolchains = commits
+            .into_iter()
+            .map(|commit| {
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Ci {
+                        commit: commit.sha,
+                        alt: self.args.alt,
+                    },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                t
+            })
+            .collect::<Vec<_>>();
+
+        if !toolchains.is_empty() {
+            // validate commit at start of range
+            let start_range_result = self.install_and_test(&toolchains[0], &dl_spec)?;
+            if start_range_result == Satisfies::Yes {
+                bail!(
+                    "the commit at the start of the range ({}) includes the regression",
+                    &toolchains[0]
+                );
+            }
+
+            // validate commit at end of range
+            let end_range_result =
+                self.install_and_test(&toolchains[toolchains.len() - 1], &dl_spec)?;
+            if end_range_result == Satisfies::No {
+                bail!(
+                    "the commit at the end of the range ({}) does not reproduce the regression",
+                    &toolchains[toolchains.len() - 1]
+                );
+            }
+        }
+
+        let found = self.bisect_to_regression(&toolchains, &dl_spec);
+
+        Ok(BisectionResult {
+            searched: toolchains,
+            found,
+            dl_spec,
         })
-        .collect::<Vec<_>>();
-
-    if !toolchains.is_empty() {
-        // validate commit at start of range
-        let start_range_result = install_and_test(&toolchains[0], cfg, client, &dl_spec)?;
-        if start_range_result == Satisfies::Yes {
-            bail!(
-                "the commit at the start of the range ({}) includes the regression",
-                &toolchains[0]
-            );
-        }
-
-        // validate commit at end of range
-        let end_range_result =
-            install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec)?;
-        if end_range_result == Satisfies::No {
-            bail!(
-                "the commit at the end of the range ({}) does not reproduce the regression",
-                &toolchains[toolchains.len() - 1]
-            );
-        }
     }
-
-    let found = bisect_to_regression(&toolchains, cfg, client, &dl_spec);
-
-    Ok(BisectionResult {
-        searched: toolchains,
-        found,
-        dl_spec,
-    })
 }
 
 #[derive(Clone)]
