@@ -110,7 +110,8 @@ struct Opts {
         long,
         help = "Root directory for tests",
         default_value = ".",
-        parse(from_os_str)
+        parse(from_os_str),
+        validator = validate_dir
     )]
     test_dir: PathBuf,
 
@@ -164,7 +165,8 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[clap(
         long,
         help = "Script replacement for `cargo build` command",
-        parse(from_os_str)
+        parse(from_os_str),
+        validator = validate_file,
     )]
     script: Option<PathBuf>,
 
@@ -173,6 +175,27 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
 }
 
 pub type GitDate = Date<Utc>;
+
+fn validate_dir(s: &str) -> anyhow::Result<()> {
+    let path: PathBuf = s.parse()?;
+    if path.is_dir() {
+        Ok(())
+    } else {
+        bail!(
+            "{} is not an existing directory",
+            path.canonicalize()?.display()
+        )
+    }
+}
+
+fn validate_file(s: &str) -> anyhow::Result<()> {
+    let path: PathBuf = s.parse()?;
+    if path.is_file() {
+        Ok(())
+    } else {
+        bail!("{} is not an existing file", path.canonicalize()?.display())
+    }
+}
 
 #[derive(Clone, Debug)]
 enum Bound {
@@ -413,13 +436,6 @@ impl Config {
             bail!(
                 "`{}` is not a directory. Please install rustup.",
                 toolchains_path.display()
-            );
-        }
-
-        if !args.test_dir.is_dir() {
-            bail!(
-                "`{}` is not a directory. Please make sure --test-dir is correct",
-                args.test_dir.display()
             );
         }
 
@@ -1185,5 +1201,29 @@ mod tests {
         for (date, i) in iter.zip([2, 4, 6, 8, 15, 22, 29, 36, 43, 50, 64, 78]) {
             assert_eq!(start_date - Duration::days(i), date)
         }
+    }
+
+    #[test]
+    fn test_validate_dir() {
+        let current_dir = ".";
+        assert!(validate_dir(current_dir).is_ok());
+        let main = "src/main.rs";
+        assert!(
+            validate_dir(main).is_err(),
+            "{}",
+            validate_dir(main).unwrap_err()
+        )
+    }
+
+    #[test]
+    fn test_validate_file() {
+        let current_dir = ".";
+        assert!(validate_file(current_dir).is_err());
+        let main = "src/main.rs";
+        assert!(
+            validate_file(main).is_ok(),
+            "{}",
+            validate_dir(main).unwrap_err()
+        )
     }
 }
