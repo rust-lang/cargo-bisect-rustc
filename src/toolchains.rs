@@ -208,7 +208,7 @@ impl Toolchain {
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
     }
 
-    pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), io::Error> {
+    pub(crate) fn remove(&self, dl_params: &DownloadParams) -> io::Result<()> {
         eprintln!("uninstalling {}", self);
         self.do_remove(dl_params)
     }
@@ -217,7 +217,7 @@ impl Toolchain {
     ///
     /// The main reason to call this (instead of `fs::remove_dir_all` directly)
     /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
-    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), io::Error> {
+    fn do_remove(&self, dl_params: &DownloadParams) -> io::Result<()> {
         let rustup_name = self.rustup_name();
 
         // Guard against destroying directories that this tool didn't create.
