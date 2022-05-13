@@ -18,7 +18,7 @@ OPTIONS:
                                     (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
         --force-install             Force installation over existing artifacts
     -h, --help                      Print help information
-        --host <HOST>               Host triple for the compiler [default: unknown]
+        --host <HOST>               Host triple for the compiler [default: [..]]
         --install <INSTALL>         Install the given artifact
         --preserve                  Preserve the downloaded artifacts
         --preserve-target           Preserve the target directory used for builds

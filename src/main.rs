@@ -85,7 +85,12 @@ struct Opts {
     #[clap(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[clap(long, help = "Host triple for the compiler", default_value = "unknown")]
+    #[clap(
+        long,
+        help = "Host triple for the compiler",
+        default_value_t = option_env!("HOST").unwrap_or("unkown").to_string(),
+        validator = validate_host
+        )]
     host: String,
 
     #[clap(long, help = "Cross-compilation target platform")]
@@ -194,6 +199,16 @@ fn validate_file(s: &str) -> anyhow::Result<()> {
         Ok(())
     } else {
         bail!("{} is not an existing file", path.canonicalize()?.display())
+    }
+}
+
+fn validate_host(s: &str) -> anyhow::Result<()> {
+    if s == "unknown" {
+        bail!(
+            "Failed to auto-detect host triple and was not specified. Please provide it via --host"
+        )
+    } else {
+        Ok(())
     }
 }
 
@@ -409,16 +424,6 @@ struct Config {
 
 impl Config {
     fn from_args(mut args: Opts) -> anyhow::Result<Config> {
-        if args.host == "unknown" {
-            if let Some(host) = option_env!("HOST") {
-                args.host = host.to_string();
-            } else {
-                bail!(
-                    "Failed to auto-detect host triple and was not specified. Please provide it via --host"
-                );
-            }
-        }
-
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
 
         let mut toolchains_path = home::rustup_home()?;
