@@ -14,11 +14,11 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
+use clap::{ArgEnum, Parser, PossibleValue};
 use colored::Colorize;
-use failure::{bail, format_err, Fail, Error};
+use anyhow::{bail, Context};
 use log::debug;
 use reqwest::blocking::Client;
-use structopt::StructOpt;
 
 mod git;
 mod github;
@@ -56,8 +56,11 @@ const REPORT_HEADER: &str = "\
 = Copy and paste the text below into the issue report thread.  Thanks!           =
 ==================================================================================";
 
-#[derive(Debug, StructOpt)]
-#[structopt(after_help = "EXAMPLES:
+#[derive(Debug, Parser)]
+#[clap(
+    version,
+    about,
+    after_help = "EXAMPLES:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
     cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
@@ -67,109 +70,147 @@ const REPORT_HEADER: &str = "\
     ```
     cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
       --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
-    ```")]
+    ```"
+)]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
-    #[structopt(
+    #[clap(
         long,
-        default_value = "error",
         help = "Custom regression definition",
-        long_help = "Custom regression definition \
-                     [error|non-error|ice|non-ice|success]"
+        arg_enum,
+        default_value_t = RegressOn::ErrorStatus,
     )]
-    regress: String,
+    regress: RegressOn,
 
-    #[structopt(short, long, help = "Download the alt build instead of normal build")]
+    #[clap(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[structopt(long, help = "Host triple for the compiler", default_value = "unknown")]
+    #[clap(
+        long,
+        help = "Host triple for the compiler",
+        default_value_t = option_env!("HOST").unwrap_or("unkown").to_string(),
+        validator = validate_host
+        )]
     host: String,
 
-    #[structopt(long, help = "Cross-compilation target platform")]
+    #[clap(long, help = "Cross-compilation target platform")]
     target: Option<String>,
 
-    #[structopt(long, help = "Preserve the downloaded artifacts")]
+    #[clap(long, help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[structopt(long, help = "Preserve the target directory used for builds")]
+    #[clap(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
-    #[structopt(long, help = "Download rust-src [default: no download]")]
+    #[clap(long, help = "Download rust-src [default: no download]")]
     with_src: bool,
 
-    #[structopt(long, help = "Download rustc-dev [default: no download]")]
+    #[clap(long, help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
-    #[structopt(short, long = "component", help = "additional components to install")]
+    #[clap(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Root directory for tests",
         default_value = ".",
-        parse(from_os_str)
+        parse(from_os_str),
+        validator = validate_dir
     )]
     test_dir: PathBuf,
 
-    #[structopt(long, help = "Manually evaluate for regression with prompts")]
+    #[clap(long, help = "Manually evaluate for regression with prompts")]
     prompt: bool,
 
-    #[structopt(
+    #[clap(
         long,
         short,
         help = "Assume failure after specified number of seconds (for bisecting hangs)"
     )]
     timeout: Option<usize>,
 
-    #[structopt(long = "verbose", parse(from_occurrences))]
+    #[clap(long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
-    #[structopt(
+    #[clap(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
-        multiple = true,
+        multiple_values = true,
         last = true,
         parse(from_os_str)
     )]
     command_args: Vec<OsString>,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     start: Option<Bound>,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Right bound for search (*with* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     end: Option<Bound>,
 
-    #[structopt(long, help = "Bisect via commit artifacts")]
+    #[clap(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[structopt(long, help = "How to access Rust git repository [github|checkout]")]
-    access: Option<String>,
+    #[clap(long, arg_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
+    access: Access,
 
-    #[structopt(long, help = "Install the given artifact")]
+    #[clap(long, help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[structopt(long, help = "Force installation over existing artifacts")]
+    #[clap(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
-    #[structopt(
+    #[clap(
         long,
         help = "Script replacement for `cargo build` command",
-        parse(from_os_str)
+        parse(from_os_str),
+        validator = validate_file,
     )]
     script: Option<PathBuf>,
 
-    #[structopt(long, help = "Do not install cargo [default: install cargo]")]
+    #[clap(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 }
 
 pub type GitDate = Date<Utc>;
+
+fn validate_dir(s: &str) -> anyhow::Result<()> {
+    let path: PathBuf = s.parse()?;
+    if path.is_dir() {
+        Ok(())
+    } else {
+        bail!(
+            "{} is not an existing directory",
+            path.canonicalize()?.display()
+        )
+    }
+}
+
+fn validate_file(s: &str) -> anyhow::Result<()> {
+    let path: PathBuf = s.parse()?;
+    if path.is_file() {
+        Ok(())
+    } else {
+        bail!("{} is not an existing file", path.canonicalize()?.display())
+    }
+}
+
+fn validate_host(s: &str) -> anyhow::Result<()> {
+    if s == "unknown" {
+        bail!(
+            "Failed to auto-detect host triple and was not specified. Please provide it via --host"
+        )
+    } else {
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug)]
 enum Bound {
@@ -177,46 +218,39 @@ enum Bound {
     Date(GitDate),
 }
 
-#[derive(Fail, Debug)]
-#[fail(display = "will never happen")]
-struct BoundParseError {}
-
 impl FromStr for Bound {
-    type Err = BoundParseError;
-    fn from_str(s: &str) -> Result<Bound, BoundParseError> {
-        match NaiveDate::parse_from_str(s, YYYY_MM_DD) {
-            Ok(date) => Ok(Bound::Date(Date::from_utc(date, Utc))),
-            Err(_) => Ok(Bound::Commit(s.to_string())),
-        }
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_to_utc_date(s)
+            .map(Self::Date)
+            .or_else(|_| Ok(Self::Commit(s.to_string())))
     }
 }
 
 impl Bound {
-    fn sha(&self) -> Result<String, Error> {
+    fn sha(&self) -> anyhow::Result<String> {
         match self {
             Bound::Commit(commit) => Ok(commit.clone()),
             Bound::Date(date) => {
                 let date_str = date.format(YYYY_MM_DD);
-                let url = format!(
-                    "{}/{}/channel-rust-nightly-git-commit-hash.txt",
-                    NIGHTLY_SERVER, date_str
-                );
+                let url =
+                    format!("{NIGHTLY_SERVER}/{date_str}/channel-rust-nightly-git-commit-hash.txt");
 
-                eprintln!("fetching {}", url);
+                eprintln!("fetching {url}");
                 let client = Client::new();
-                let name = format!("nightly manifest {}", date_str);
+                let name = format!("nightly manifest {date_str}");
                 let mut response = download_progress(&client, &name, &url)?;
                 let mut commit = String::new();
                 response.read_to_string(&mut commit)?;
 
-                eprintln!("converted {} to {}", date_str, commit);
+                eprintln!("converted {date_str} to {commit}");
 
                 Ok(commit)
             }
         }
     }
 
-    fn as_commit(&self) -> Result<Self, Error> {
+    fn as_commit(&self) -> anyhow::Result<Self> {
         self.sha().map(Bound::Commit)
     }
 }
@@ -227,7 +261,7 @@ impl Opts {
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 struct ExitError(i32);
 
 impl fmt::Display for ExitError {
@@ -250,7 +284,7 @@ impl Config {
         let saw_ice = stderr_utf8.contains("error: internal compiler error")
             || stderr_utf8.contains("thread 'rustc' has overflowed its stack");
 
-        let input = (self.regress_on(), status.success());
+        let input = (self.args.regress, status.success());
         let result = match input {
             (RegressOn::ErrorStatus, true) | (RegressOn::SuccessStatus, false) => {
                 TestOutcome::Baseline
@@ -278,20 +312,24 @@ impl Config {
         );
         result
     }
+}
 
-    fn regress_on(&self) -> RegressOn {
-        match self.args.regress.as_str() {
-            "error" => RegressOn::ErrorStatus,
-            "non-error" => RegressOn::NonCleanError,
-            "ice" => RegressOn::IceAlone,
-            "non-ice" => RegressOn::NotIce,
-            "success" => RegressOn::SuccessStatus,
-            setting => panic!("Unknown --regress setting: {:?}", setting),
+#[derive(ArgEnum, Clone, Debug)]
+enum Access {
+    Checkout,
+    Github,
+}
+
+impl Access {
+    fn repo(&self) -> Box<dyn RustRepositoryAccessor> {
+        match self {
+            Self::Checkout => Box::new(AccessViaLocalGit),
+            Self::Github => Box::new(AccessViaGithub),
         }
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, StructOpt)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 /// Customize what is treated as regression.
 enum RegressOn {
     /// `ErrorStatus`: Marks test outcome as `Regressed` if and only if
@@ -346,6 +384,27 @@ enum RegressOn {
     NonCleanError,
 }
 
+impl ArgEnum for RegressOn {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[
+            Self::ErrorStatus,
+            Self::SuccessStatus,
+            Self::IceAlone,
+            Self::NotIce,
+            Self::NonCleanError,
+        ]
+    }
+    fn to_possible_value<'a>(&self) -> Option<PossibleValue<'a>> {
+        Some(PossibleValue::new(match self {
+            Self::ErrorStatus => "error",
+            Self::NonCleanError => "non-error",
+            Self::IceAlone => "ice",
+            Self::NotIce => "non-ice",
+            Self::SuccessStatus => "success",
+        }))
+    }
+}
+
 impl RegressOn {
     fn must_process_stderr(self) -> bool {
         match self {
@@ -361,21 +420,11 @@ struct Config {
     toolchains_path: PathBuf,
     target: String,
     is_commit: bool,
-    repo_access: Box<dyn RustRepositoryAccessor>,
+    client: Client,
 }
 
 impl Config {
-    fn from_args(mut args: Opts) -> Result<Config, Error> {
-        if args.host == "unknown" {
-            if let Some(host) = option_env!("HOST") {
-                args.host = host.to_string();
-            } else {
-                bail!(
-                    "Failed to auto-detect host triple and was not specified. Please provide it via --host"
-                );
-            }
-        }
-
+    fn from_args(mut args: Opts) -> anyhow::Result<Config> {
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
 
         let mut toolchains_path = home::rustup_home()?;
@@ -393,13 +442,6 @@ impl Config {
             bail!(
                 "`{}` is not a directory. Please install rustup.",
                 toolchains_path.display()
-            );
-        }
-
-        if !args.test_dir.is_dir() {
-            bail!(
-                "`{}` is not a directory. Please make sure --test-dir is correct",
-                args.test_dir.display()
             );
         }
 
@@ -431,24 +473,18 @@ impl Config {
             }
         }
 
-        let repo_access: Box<dyn RustRepositoryAccessor> = match args.access.as_deref() {
-            None | Some("checkout") => Box::new(AccessViaLocalGit),
-            Some("github") => Box::new(AccessViaGithub),
-            Some(other) => bail!("unknown access argument: {}", other),
-        };
-
         Ok(Config {
             is_commit: args.by_commit || is_commit == Some(true),
             args,
             target,
             toolchains_path,
             rustup_tmp_path,
-            repo_access,
+            client: Client::new(),
         })
     }
 }
 
-fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error> {
+fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()> {
     // current UTC date
     let current = Utc::today();
     match start.as_ref().zip(end.as_ref()) {
@@ -481,85 +517,84 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> Result<(), Error>
 }
 
 // Application entry point
-fn run() -> Result<(), Error> {
+fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
-    let args = env::args_os().filter(|a| a != "bisect-rustc");
-    let args = Opts::from_iter(args);
+    let args = Opts::parse();
     check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
 
-    let client = Client::new();
-
     if let Some(ref bound) = cfg.args.install {
-        install(&cfg, &client, bound)
+        cfg.install(bound)
     } else {
-        bisect(&cfg, &client)
+        cfg.bisect()
     }
 }
 
-fn install(cfg: &Config, client: &Client, bound: &Bound) -> Result<(), Error> {
-    match *bound {
-        Bound::Commit(ref sha) => {
-            let sha = cfg.repo_access.commit(sha)?.sha;
-            let mut t = Toolchain {
-                spec: ToolchainSpec::Ci {
-                    commit: sha,
-                    alt: cfg.args.alt,
-                },
-                host: cfg.args.host.clone(),
-                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-            };
-            t.std_targets.sort();
-            t.std_targets.dedup();
-            let dl_params = DownloadParams::for_ci(cfg);
-            t.install(client, &dl_params)?;
+impl Config {
+    fn install(&self, bound: &Bound) -> anyhow::Result<()> {
+        match *bound {
+            Bound::Commit(ref sha) => {
+                let sha = self.args.access.repo().commit(sha)?.sha;
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Ci {
+                        commit: sha,
+                        alt: self.args.alt,
+                    },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                let dl_params = DownloadParams::for_ci(self);
+                t.install(&self.client, &dl_params)?;
+            }
+            Bound::Date(date) => {
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Nightly { date },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                let dl_params = DownloadParams::for_nightly(self);
+                t.install(&self.client, &dl_params)?;
+            }
         }
-        Bound::Date(date) => {
-            let mut t = Toolchain {
-                spec: ToolchainSpec::Nightly { date },
-                host: cfg.args.host.clone(),
-                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-            };
-            t.std_targets.sort();
-            t.std_targets.dedup();
-            let dl_params = DownloadParams::for_nightly(cfg);
-            t.install(client, &dl_params)?;
-        }
+
+        Ok(())
     }
 
-    Ok(())
-}
+    // bisection entry point
+    fn bisect(&self) -> anyhow::Result<()> {
+        if self.is_commit {
+            let bisection_result = self.bisect_ci()?;
+            self.print_results(&bisection_result);
+        } else {
+            let nightly_bisection_result = self.bisect_nightlies()?;
+            self.print_results(&nightly_bisection_result);
+            let nightly_regression =
+                &nightly_bisection_result.searched[nightly_bisection_result.found];
 
-// bisection entry point
-fn bisect(cfg: &Config, client: &Client) -> Result<(), Error> {
-    if cfg.is_commit {
-        let bisection_result = bisect_ci(cfg, client)?;
-        print_results(cfg, client, &bisection_result);
-    } else {
-        let nightly_bisection_result = bisect_nightlies(cfg, client)?;
-        print_results(cfg, client, &nightly_bisection_result);
-        let nightly_regression = &nightly_bisection_result.searched[nightly_bisection_result.found];
+            if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
+                let previous_date = date.pred();
 
-        if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
-            let previous_date = date.pred();
+                let working_commit = Bound::Date(previous_date).sha()?;
+                let bad_commit = Bound::Date(date).sha()?;
+                eprintln!(
+                    "looking for regression commit between {} and {}",
+                    previous_date.format(YYYY_MM_DD),
+                    date.format(YYYY_MM_DD),
+                );
 
-            let working_commit = Bound::Date(previous_date).sha()?;
-            let bad_commit = Bound::Date(date).sha()?;
-            eprintln!(
-                "looking for regression commit between {} and {}",
-                previous_date.format(YYYY_MM_DD),
-                date.format(YYYY_MM_DD),
-            );
+                let ci_bisection_result = self.bisect_ci_via(&working_commit, &bad_commit)?;
 
-            let ci_bisection_result =
-                bisect_ci_via(cfg, client, &*cfg.repo_access, &working_commit, &bad_commit)?;
-
-            print_results(cfg, client, &ci_bisection_result);
-            print_final_report(cfg, &nightly_bisection_result, &ci_bisection_result);
+                self.print_results(&ci_bisection_result);
+                print_final_report(self, &nightly_bisection_result, &ci_bisection_result);
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
 
 fn searched_range(
@@ -589,50 +624,54 @@ fn searched_range(
     }
 }
 
-fn print_results(cfg: &Config, client: &Client, bisection_result: &BisectionResult) {
-    let BisectionResult {
-        searched: toolchains,
-        dl_spec,
-        found,
-    } = bisection_result;
+impl Config {
+    fn print_results(&self, bisection_result: &BisectionResult) {
+        let BisectionResult {
+            searched: toolchains,
+            dl_spec,
+            found,
+        } = bisection_result;
 
-    let (start, end) = searched_range(cfg, toolchains);
+        let (start, end) = searched_range(self, toolchains);
 
-    eprintln!("searched toolchains {} through {}", start, end);
+        eprintln!("searched toolchains {} through {}", start, end);
 
-    if toolchains[*found] == *toolchains.last().unwrap() {
-        let t = &toolchains[*found];
-        let r = match t.install(client, dl_spec) {
-            Ok(()) => {
-                let outcome = t.test(cfg);
-                remove_toolchain(cfg, t, dl_spec);
-                // we want to fail, so a successful build doesn't satisfy us
-                match outcome {
-                    TestOutcome::Baseline => Satisfies::No,
-                    TestOutcome::Regressed => Satisfies::Yes,
+        if toolchains[*found] == *toolchains.last().unwrap() {
+            let t = &toolchains[*found];
+            let r = match t.install(&self.client, dl_spec) {
+                Ok(()) => {
+                    let outcome = t.test(self);
+                    remove_toolchain(self, t, dl_spec);
+                    // we want to fail, so a successful build doesn't satisfy us
+                    match outcome {
+                        TestOutcome::Baseline => Satisfies::No,
+                        TestOutcome::Regressed => Satisfies::Yes,
+                    }
+                }
+                Err(_) => {
+                    let _ = t.remove(dl_spec);
+                    Satisfies::Unknown
+                }
+            };
+            match r {
+                Satisfies::Yes => {}
+                Satisfies::No | Satisfies::Unknown => {
+                    eprintln!(
+                        "error: The regression was not found. Expanding the bounds may help."
+                    );
+                    return;
                 }
             }
-            Err(_) => {
-                let _ = t.remove(dl_spec);
-                Satisfies::Unknown
-            }
-        };
-        match r {
-            Satisfies::Yes => {}
-            Satisfies::No | Satisfies::Unknown => {
-                eprintln!("error: The regression was not found. Expanding the bounds may help.");
-                return;
-            }
         }
-    }
 
-    let tc_found = format!("Regression in {}", toolchains[*found]);
-    eprintln!();
-    eprintln!();
-    eprintln!("{}", "*".repeat(80).dimmed().bold());
-    eprintln!("{}", tc_found.red());
-    eprintln!("{}", "*".repeat(80).dimmed().bold());
-    eprintln!();
+        let tc_found = format!("Regression in {}", toolchains[*found]);
+        eprintln!();
+        eprintln!();
+        eprintln!("{}", "*".repeat(80).dimmed().bold());
+        eprintln!("{}", tc_found.red());
+        eprintln!("{}", "*".repeat(80).dimmed().bold());
+        eprintln!();
+    }
 }
 
 fn remove_toolchain(cfg: &Config, toolchain: &Toolchain, dl_params: &DownloadParams) {
@@ -773,41 +812,38 @@ impl Iterator for NightlyFinderIter {
     }
 }
 
-fn install_and_test(
-    t: &Toolchain,
-    cfg: &Config,
-    client: &Client,
-    dl_spec: &DownloadParams,
-) -> Result<Satisfies, InstallError> {
-    match t.install(client, dl_spec) {
-        Ok(()) => {
-            let outcome = t.test(cfg);
-            // we want to fail, so a successful build doesn't satisfy us
-            let r = match outcome {
-                TestOutcome::Baseline => Satisfies::No,
-                TestOutcome::Regressed => Satisfies::Yes,
-            };
-            eprintln!("RESULT: {}, ===> {}", t, r);
-            remove_toolchain(cfg, t, dl_spec);
-            eprintln!();
-            Ok(r)
-        }
-        Err(error) => {
-            remove_toolchain(cfg, t, dl_spec);
-            Err(error)
+impl Config {
+    fn install_and_test(
+        &self,
+        t: &Toolchain,
+        dl_spec: &DownloadParams,
+    ) -> Result<Satisfies, InstallError> {
+        match t.install(&self.client, dl_spec) {
+            Ok(()) => {
+                let outcome = t.test(self);
+                // we want to fail, so a successful build doesn't satisfy us
+                let r = match outcome {
+                    TestOutcome::Baseline => Satisfies::No,
+                    TestOutcome::Regressed => Satisfies::Yes,
+                };
+                eprintln!("RESULT: {}, ===> {}", t, r);
+                remove_toolchain(self, t, dl_spec);
+                eprintln!();
+                Ok(r)
+            }
+            Err(error) => {
+                remove_toolchain(self, t, dl_spec);
+                Err(error)
+            }
         }
     }
-}
 
-fn bisect_to_regression(
-    toolchains: &[Toolchain],
-    cfg: &Config,
-    client: &Client,
-    dl_spec: &DownloadParams,
-) -> usize {
-    least_satisfying(toolchains, |t| {
-        install_and_test(t, cfg, client, dl_spec).unwrap_or(Satisfies::Unknown)
-    })
+    fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
+        least_satisfying(toolchains, |t| {
+            self.install_and_test(t, dl_spec)
+                .unwrap_or(Satisfies::Unknown)
+        })
+    }
 }
 
 fn get_start_date(cfg: &Config) -> Date<Utc> {
@@ -832,135 +868,134 @@ fn date_is_future(test_date: Date<Utc>) -> bool {
     test_date > Utc::today()
 }
 
-// nightlies branch of bisect execution
-fn bisect_nightlies(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
-    if cfg.args.alt {
-        bail!("cannot bisect nightlies with --alt: not supported");
-    }
+impl Config {
+    // nightlies branch of bisect execution
+    fn bisect_nightlies(&self) -> anyhow::Result<BisectionResult> {
+        if self.args.alt {
+            bail!("cannot bisect nightlies with --alt: not supported");
+        }
 
-    let dl_spec = DownloadParams::for_nightly(cfg);
+        let dl_spec = DownloadParams::for_nightly(self);
 
-    // before this date we didn't have -std packages
-    let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
-    let mut first_success = None;
+        // before this date we didn't have -std packages
+        let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
+        let mut first_success = None;
 
-    let mut nightly_date = get_start_date(cfg);
-    let mut last_failure = get_end_date(cfg);
-    let has_start = cfg.args.start.is_some();
+        let mut nightly_date = get_start_date(self);
+        let mut last_failure = get_end_date(self);
+        let has_start = self.args.start.is_some();
 
-    // validate start and end dates to confirm that they are not future dates
-    // start date validation
-    if has_start && date_is_future(nightly_date) {
-        bail!(
-            "start date must be on or before the current date. received start date request {}",
-            nightly_date
-        )
-    }
-    // end date validation
-    if date_is_future(last_failure) {
-        bail!(
-            "end date must be on or before the current date. received end date request {}",
-            nightly_date
-        )
-    }
+        // validate start and end dates to confirm that they are not future dates
+        // start date validation
+        if has_start && date_is_future(nightly_date) {
+            bail!(
+                "start date must be on or before the current date. received start date request {}",
+                nightly_date
+            )
+        }
+        // end date validation
+        if date_is_future(last_failure) {
+            bail!(
+                "end date must be on or before the current date. received end date request {}",
+                nightly_date
+            )
+        }
 
-    let mut nightly_iter = NightlyFinderIter::new(nightly_date);
+        let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
-    // this loop tests nightly toolchains to:
-    // (1) validate that start date does not have regression (if defined on command line)
-    // (2) identify a nightly date range for the bisection routine
-    //
-    // The tests here must be constrained to dates after 2015-10-20 (`end_at` date)
-    // because -std packages were not available prior
-    while nightly_date > end_at {
-        let mut t = Toolchain {
-            spec: ToolchainSpec::Nightly { date: nightly_date },
-            host: cfg.args.host.clone(),
-            std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-        };
-        t.std_targets.sort();
-        t.std_targets.dedup();
-        if t.is_current_nightly() {
-            eprintln!(
-                "checking {} from the currently installed default nightly \
+        // this loop tests nightly toolchains to:
+        // (1) validate that start date does not have regression (if defined on command line)
+        // (2) identify a nightly date range for the bisection routine
+        //
+        // The tests here must be constrained to dates after 2015-10-20 (`end_at` date)
+        // because -std packages were not available prior
+        while nightly_date > end_at {
+            let mut t = Toolchain {
+                spec: ToolchainSpec::Nightly { date: nightly_date },
+                host: self.args.host.clone(),
+                std_targets: vec![self.args.host.clone(), self.target.clone()],
+            };
+            t.std_targets.sort();
+            t.std_targets.dedup();
+            if t.is_current_nightly() {
+                eprintln!(
+                    "checking {} from the currently installed default nightly \
                        toolchain as the last failure",
-                t
+                    t
+                );
+            }
+
+            match self.install_and_test(&t, &dl_spec) {
+                Ok(r) => {
+                    // If Satisfies::No, then the regression was not identified in this nightly.
+                    // Break out of the loop and use this as the start date for the
+                    // bisection range
+                    if r == Satisfies::No {
+                        first_success = Some(nightly_date);
+                        break;
+                    } else if has_start {
+                        // If this date was explicitly defined on the command line &
+                        // has regression, then this is an error in the test definition.
+                        // The user must re-define the start date and try again
+                        bail!(
+                            "the start of the range ({}) must not reproduce the regression",
+                            t
+                        );
+                    }
+                    last_failure = nightly_date;
+                    nightly_date = nightly_iter.next().unwrap();
+                }
+                Err(InstallError::NotFound { .. }) => {
+                    // go back just one day, presumably missing a nightly
+                    nightly_date = nightly_date.pred();
+                    eprintln!(
+                        "*** unable to install {}. roll back one day and try again...",
+                        t
+                    );
+                    if has_start {
+                        bail!("could not find {}", t);
+                    }
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        let first_success = first_success.context("could not find a nightly that built")?;
+
+        // confirm that the end of the date range has the regression
+        let mut t_end = Toolchain {
+            spec: ToolchainSpec::Nightly { date: last_failure },
+            host: self.args.host.clone(),
+            std_targets: vec![self.args.host.clone(), self.target.clone()],
+        };
+        t_end.std_targets.sort();
+        t_end.std_targets.dedup();
+
+        let result_nightly = self.install_and_test(&t_end, &dl_spec)?;
+        // The regression was not identified in this nightly.
+        if result_nightly == Satisfies::No {
+            bail!(
+                "the end of the range ({}) does not reproduce the regression",
+                t_end
             );
         }
 
-        match install_and_test(&t, cfg, client, &dl_spec) {
-            Ok(r) => {
-                // If Satisfies::No, then the regression was not identified in this nightly.
-                // Break out of the loop and use this as the start date for the
-                // bisection range
-                if r == Satisfies::No {
-                    first_success = Some(nightly_date);
-                    break;
-                } else if has_start {
-                    // If this date was explicitly defined on the command line &
-                    // has regression, then this is an error in the test definition.
-                    // The user must re-define the start date and try again
-                    bail!(
-                        "the start of the range ({}) must not reproduce the regression",
-                        t
-                    );
-                } else {
-                    last_failure = nightly_date;
-                }
-
-                nightly_date = nightly_iter.next().unwrap();
-            }
-            Err(InstallError::NotFound { .. }) => {
-                // go back just one day, presumably missing a nightly
-                nightly_date = nightly_date.pred();
-                eprintln!(
-                    "*** unable to install {}. roll back one day and try again...",
-                    t
-                );
-                if has_start {
-                    bail!("could not find {}", t);
-                }
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
-
-    let first_success =
-        first_success.ok_or_else(|| format_err!("could not find a nightly that built"))?;
-
-    // confirm that the end of the date range has the regression
-    let mut t_end = Toolchain {
-        spec: ToolchainSpec::Nightly { date: last_failure },
-        host: cfg.args.host.clone(),
-        std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-    };
-    t_end.std_targets.sort();
-    t_end.std_targets.dedup();
-
-    let result_nightly = install_and_test(&t_end, cfg, client, &dl_spec)?;
-    // The regression was not identified in this nightly.
-    if result_nightly == Satisfies::No {
-        bail!(
-            "the end of the range ({}) does not reproduce the regression",
-            t_end
+        let toolchains = toolchains_between(
+            self,
+            ToolchainSpec::Nightly {
+                date: first_success,
+            },
+            ToolchainSpec::Nightly { date: last_failure },
         );
+
+        let found = self.bisect_to_regression(&toolchains, &dl_spec);
+
+        Ok(BisectionResult {
+            dl_spec,
+            searched: toolchains,
+            found,
+        })
     }
-
-    let toolchains = toolchains_between(
-        cfg,
-        ToolchainSpec::Nightly {
-            date: first_success,
-        },
-        ToolchainSpec::Nightly { date: last_failure },
-    );
-
-    let found = bisect_to_regression(&toolchains, cfg, client, &dl_spec);
-
-    Ok(BisectionResult {
-        dl_spec,
-        searched: toolchains,
-        found,
-    })
 }
 
 fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<Toolchain> {
@@ -986,133 +1021,129 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
     }
 }
 
-// CI branch of bisect execution
-fn bisect_ci(cfg: &Config, client: &Client) -> Result<BisectionResult, Error> {
-    eprintln!("bisecting ci builds");
-    let start = if let Some(Bound::Commit(ref sha)) = cfg.args.start {
-        sha
-    } else {
-        EPOCH_COMMIT
-    };
+impl Config {
+    // CI branch of bisect execution
+    fn bisect_ci(&self) -> anyhow::Result<BisectionResult> {
+        eprintln!("bisecting ci builds");
+        let start = if let Some(Bound::Commit(ref sha)) = self.args.start {
+            sha
+        } else {
+            EPOCH_COMMIT
+        };
 
-    let end = if let Some(Bound::Commit(ref sha)) = cfg.args.end {
-        sha
-    } else {
-        "origin/master"
-    };
+        let end = if let Some(Bound::Commit(ref sha)) = self.args.end {
+            sha
+        } else {
+            "origin/master"
+        };
 
-    eprintln!("starting at {}, ending at {}", start, end);
+        eprintln!("starting at {}, ending at {}", start, end);
 
-    bisect_ci_via(cfg, client, &*cfg.repo_access, start, end)
-}
+        self.bisect_ci_via(start, end)
+    }
 
-fn bisect_ci_via(
-    cfg: &Config,
-    client: &Client,
-    access: &dyn RustRepositoryAccessor,
-    start_sha: &str,
-    end_ref: &str,
-) -> Result<BisectionResult, Error> {
-    let end_sha = access.commit(end_ref)?.sha;
-    let commits = access.commits(start_sha, &end_sha)?;
+    fn bisect_ci_via(&self, start_sha: &str, end_ref: &str) -> anyhow::Result<BisectionResult> {
+        let access = self.args.access.repo();
+        let end_sha = access.commit(end_ref)?.sha;
+        let commits = access.commits(start_sha, &end_sha)?;
 
-    assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
+        assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
 
-    commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
-        let sorted_by_date = a.date <= b.date;
-        assert!(
-            sorted_by_date,
-            "commits must chronologically ordered,\
+        commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
+            let sorted_by_date = a.date <= b.date;
+            assert!(
+                sorted_by_date,
+                "commits must chronologically ordered,\
                                  but {:?} comes after {:?}",
-            a, b
-        );
-        sorted_by_date
-    });
+                a, b
+            );
+            sorted_by_date
+        });
 
-    for (j, commit) in commits.iter().enumerate() {
-        eprintln!(
-            "  commit[{}] {}: {}",
-            j,
-            commit.date,
-            commit.summary.split('\n').next().unwrap()
-        )
-    }
-
-    bisect_ci_in_commits(cfg, client, start_sha, &end_sha, commits)
-}
-
-fn bisect_ci_in_commits(
-    cfg: &Config,
-    client: &Client,
-    start: &str,
-    end: &str,
-    mut commits: Vec<Commit>,
-) -> Result<BisectionResult, Error> {
-    let dl_spec = DownloadParams::for_ci(cfg);
-    commits.retain(|c| Utc::today() - c.date < Duration::days(167));
-
-    if commits.is_empty() {
-        bail!(
-            "no CI builds available between {} and {} within last 167 days",
-            start,
-            end
-        );
-    }
-
-    if let Some(c) = commits.last() {
-        if end != "origin/master" && !c.sha.starts_with(end) {
-            bail!("expected to end with {}, but ended with {}", end, c.sha);
+        for (j, commit) in commits.iter().enumerate() {
+            eprintln!(
+                "  commit[{}] {}: {}",
+                j,
+                commit.date,
+                commit.summary.split('\n').next().unwrap()
+            )
         }
+
+        self.bisect_ci_in_commits(start_sha, &end_sha, commits)
     }
 
-    eprintln!("validated commits found, specifying toolchains");
-    eprintln!();
+    fn bisect_ci_in_commits(
+        &self,
+        start: &str,
+        end: &str,
+        mut commits: Vec<Commit>,
+    ) -> anyhow::Result<BisectionResult> {
+        let dl_spec = DownloadParams::for_ci(self);
+        commits.retain(|c| Utc::today() - c.date < Duration::days(167));
 
-    let toolchains = commits
-        .into_iter()
-        .map(|commit| {
-            let mut t = Toolchain {
-                spec: ToolchainSpec::Ci {
-                    commit: commit.sha,
-                    alt: cfg.args.alt,
-                },
-                host: cfg.args.host.clone(),
-                std_targets: vec![cfg.args.host.clone(), cfg.target.clone()],
-            };
-            t.std_targets.sort();
-            t.std_targets.dedup();
-            t
+        if commits.is_empty() {
+            bail!(
+                "no CI builds available between {} and {} within last 167 days",
+                start,
+                end
+            );
+        }
+
+        if let Some(c) = commits.last() {
+            if end != "origin/master" && !c.sha.starts_with(end) {
+                bail!("expected to end with {}, but ended with {}", end, c.sha);
+            }
+        }
+
+        eprintln!("validated commits found, specifying toolchains");
+        eprintln!();
+
+        let toolchains = commits
+            .into_iter()
+            .map(|commit| {
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Ci {
+                        commit: commit.sha,
+                        alt: self.args.alt,
+                    },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                t
+            })
+            .collect::<Vec<_>>();
+
+        if !toolchains.is_empty() {
+            // validate commit at start of range
+            let start_range_result = self.install_and_test(&toolchains[0], &dl_spec)?;
+            if start_range_result == Satisfies::Yes {
+                bail!(
+                    "the commit at the start of the range ({}) includes the regression",
+                    &toolchains[0]
+                );
+            }
+
+            // validate commit at end of range
+            let end_range_result =
+                self.install_and_test(&toolchains[toolchains.len() - 1], &dl_spec)?;
+            if end_range_result == Satisfies::No {
+                bail!(
+                    "the commit at the end of the range ({}) does not reproduce the regression",
+                    &toolchains[toolchains.len() - 1]
+                );
+            }
+        }
+
+        let found = self.bisect_to_regression(&toolchains, &dl_spec);
+
+        Ok(BisectionResult {
+            searched: toolchains,
+            found,
+            dl_spec,
         })
-        .collect::<Vec<_>>();
-
-    if !toolchains.is_empty() {
-        // validate commit at start of range
-        let start_range_result = install_and_test(&toolchains[0], cfg, client, &dl_spec)?;
-        if start_range_result == Satisfies::Yes {
-            bail!(
-                "the commit at the start of the range ({}) includes the regression",
-                &toolchains[0]
-            );
-        }
-
-        // validate commit at end of range
-        let end_range_result =
-            install_and_test(&toolchains[toolchains.len() - 1], cfg, client, &dl_spec)?;
-        if end_range_result == Satisfies::No {
-            bail!(
-                "the commit at the end of the range ({}) does not reproduce the regression",
-                &toolchains[toolchains.len() - 1]
-            );
-        }
     }
-
-    let found = bisect_to_regression(&toolchains, cfg, client, &dl_spec);
-
-    Ok(BisectionResult {
-        searched: toolchains,
-        found,
-        dl_spec,
-    })
 }
 
 #[derive(Clone)]
@@ -1177,5 +1208,29 @@ mod tests {
         for (date, i) in iter.zip([2, 4, 6, 8, 15, 22, 29, 36, 43, 50, 64, 78]) {
             assert_eq!(start_date - Duration::days(i), date)
         }
+    }
+
+    #[test]
+    fn test_validate_dir() {
+        let current_dir = ".";
+        assert!(validate_dir(current_dir).is_ok());
+        let main = "src/main.rs";
+        assert!(
+            validate_dir(main).is_err(),
+            "{}",
+            validate_dir(main).unwrap_err()
+        )
+    }
+
+    #[test]
+    fn test_validate_file() {
+        let current_dir = ".";
+        assert!(validate_file(current_dir).is_err());
+        let main = "src/main.rs";
+        assert!(
+            validate_file(main).is_ok(),
+            "{}",
+            validate_dir(main).unwrap_err()
+        )
     }
 }

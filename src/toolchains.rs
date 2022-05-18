@@ -7,7 +7,6 @@ use std::process::{self, Command, Stdio};
 use chrono::{Date, NaiveDate, Utc};
 use colored::Colorize;
 use dialoguer::Select;
-use failure::{Fail, Error};
 use flate2::read::GzDecoder;
 use log::debug;
 use pbr::{ProgressBar, Units};
@@ -28,20 +27,20 @@ pub const YYYY_MM_DD: &str = "%Y-%m-%d";
 pub(crate) const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
 const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum InstallError {
-    #[fail(display = "Could not find {}; url: {}", spec, url)]
+    #[error("Could not find {spec}; url: {url}")]
     NotFound { url: String, spec: ToolchainSpec },
-    #[fail(display = "Could not download toolchain: {}", _0)]
-    Download(#[cause] DownloadError),
-    #[fail(display = "Could not create tempdir: {}", _0)]
-    TempDir(#[cause] io::Error),
-    #[fail(display = "Could not move tempdir into destination: {}", _0)]
-    Move(#[cause] io::Error),
-    #[fail(display = "Could not run subcommand {}: {}", cmd, err)]
+    #[error("Could not download toolchain: {0}")]
+    Download(#[source] DownloadError),
+    #[error("Could not create tempdir: {0}")]
+    TempDir(#[source] io::Error),
+    #[error("Could not move tempdir into destination: {0}")]
+    Move(#[source] io::Error),
+    #[error("Could not run subcommand {cmd}: {err}")]
     Subcommand {
         cmd: String,
-        #[cause]
+        #[source]
         err: io::Error,
     },
 }
@@ -74,7 +73,7 @@ impl Toolchain {
                 } else {
                     String::new()
                 };
-                format!("bisector-ci-{}{}-{}", commit, alt_s, self.host)
+                format!("bisector-ci-{commit}{alt_s}-{}", self.host)
             }
             // N.B. We need to call this with a nonstandard name so that rustup utilizes the
             // fallback cargo logic.
@@ -108,7 +107,7 @@ impl Toolchain {
         client: &Client,
         dl_params: &DownloadParams,
     ) -> Result<(), InstallError> {
-        let tc_stdstream_str = format!("{}", self);
+        let tc_stdstream_str = format!("{self}");
         eprintln!("installing {}", tc_stdstream_str.green());
         let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
             .map_err(InstallError::TempDir)?;
@@ -155,7 +154,10 @@ impl Toolchain {
             } else {
                 Err(InstallError::Subcommand {
                     cmd: format!("{cmd:?}"),
-                    err: io::Error::new(io::ErrorKind::Other, "failed to link via `rustup`"),
+                    err: io::Error::new(
+                        io::ErrorKind::Other,
+                        "thiserror::Errored to link via `rustup`",
+                    ),
                 })
             };
         }
@@ -175,20 +177,20 @@ impl Toolchain {
                     // rust-src is target-independent
                     "rust-src-nightly".to_string()
                 } else {
-                    format!("{}-nightly-{}", component, self.host)
+                    format!("{component}-nightly-{}", self.host)
                 }
             })
             .chain(
                 self.std_targets
                     .iter()
-                    .map(|target| format!("rust-std-nightly-{}", target)),
+                    .map(|target| format!("rust-std-nightly-{target}")),
             );
 
         for component in components {
             download_tarball(
                 client,
                 &component,
-                &format!("{}/{}/{}.tar", dl_params.url_prefix, location, component),
+                &format!("{}/{location}/{component}.tar", dl_params.url_prefix),
                 tmpdir.path(),
             )
             .map_err(|e| {
@@ -206,7 +208,7 @@ impl Toolchain {
         fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
     }
 
-    pub(crate) fn remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+    pub(crate) fn remove(&self, dl_params: &DownloadParams) -> io::Result<()> {
         eprintln!("uninstalling {}", self);
         self.do_remove(dl_params)
     }
@@ -215,7 +217,7 @@ impl Toolchain {
     ///
     /// The main reason to call this (instead of `fs::remove_dir_all` directly)
     /// is to guard against deleting state not managed by `cargo-bisect-rustc`.
-    fn do_remove(&self, dl_params: &DownloadParams) -> Result<(), Error> {
+    fn do_remove(&self, dl_params: &DownloadParams) -> io::Result<()> {
         let rustup_name = self.rustup_name();
 
         // Guard against destroying directories that this tool didn't create.
@@ -224,8 +226,7 @@ impl Toolchain {
         );
 
         let dir = dl_params.install_dir.join(rustup_name);
-        fs::remove_dir_all(&dir)?;
-        Ok(())
+        fs::remove_dir_all(&dir)
     }
 
     pub(crate) fn run_test(&self, cfg: &Config) -> process::Output {
@@ -279,7 +280,7 @@ impl Toolchain {
         cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
 
         // let `cmd` capture stderr for us to process afterward.
-        let must_capture_output = cfg.regress_on().must_process_stderr();
+        let must_capture_output = cfg.args.regress.must_process_stderr();
         let emit_output = cfg.args.emit_cargo_output() || cfg.args.prompt;
 
         let default_stdio = if must_capture_output {
@@ -296,7 +297,7 @@ impl Toolchain {
         let output = match cmd.output() {
             Ok(output) => output,
             Err(err) => {
-                panic!("failed to run {:?}: {:?}", cmd, err);
+                panic!("thiserror::Errored to run {:?}: {:?}", cmd, err);
             }
         };
 
@@ -390,8 +391,7 @@ pub(crate) struct DownloadParams {
 impl DownloadParams {
     pub(crate) fn for_ci(cfg: &Config) -> Self {
         let url_prefix = format!(
-            "{}/rustc-builds{}",
-            CI_SERVER,
+            "{CI_SERVER}/rustc-builds{}",
             if cfg.args.alt { "-alt" } else { "" }
         );
 
@@ -428,22 +428,22 @@ impl DownloadParams {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum ArchiveError {
-    #[fail(display = "Failed to parse archive: {}", _0)]
-    Archive(#[cause] io::Error),
-    #[fail(display = "Failed to create directory: {}", _0)]
-    CreateDir(#[cause] io::Error),
+    #[error("thiserror::Errored to parse archive: {0}")]
+    Archive(#[source] io::Error),
+    #[error("thiserror::Errored to create directory: {0}")]
+    CreateDir(#[source] io::Error),
 }
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum DownloadError {
-    #[fail(display = "Tarball not found at {}", _0)]
+    #[error("Tarball not found at {0}")]
     NotFound(String),
-    #[fail(display = "A reqwest error occurred: {}", _0)]
-    Reqwest(#[cause] reqwest::Error),
-    #[fail(display = "An archive error occurred: {}", _0)]
-    Archive(#[cause] ArchiveError),
+    #[error("A reqwest error occurred: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("An archive error occurred: {0}")]
+    Archive(#[from] ArchiveError),
 }
 
 pub(crate) fn download_progress(
@@ -453,14 +453,12 @@ pub(crate) fn download_progress(
 ) -> Result<TeeReader<Response, ProgressBar<io::Stdout>>, DownloadError> {
     debug!("downloading <{}>...", url);
 
-    let response = client.get(url).send().map_err(DownloadError::Reqwest)?;
+    let response = client.get(url).send()?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(DownloadError::NotFound(url.to_string()));
     }
-    let response = response
-        .error_for_status()
-        .map_err(DownloadError::Reqwest)?;
+    let response = response.error_for_status()?;
 
     let length = response
         .headers()
@@ -526,9 +524,9 @@ fn download_tarball(
     url: &str,
     dest: &Path,
 ) -> Result<(), DownloadError> {
-    match download_tar_xz(client, name, &format!("{}.xz", url,), dest) {
+    match download_tar_xz(client, name, &format!("{url}.xz"), dest) {
         Err(DownloadError::NotFound { .. }) => {
-            download_tar_gz(client, name, &format!("{}.gz", url,), dest)
+            download_tar_gz(client, name, &format!("{url}.gz"), dest)
         }
         res => res,
     }

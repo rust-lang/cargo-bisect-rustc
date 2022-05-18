@@ -1,5 +1,6 @@
-use failure::{Error, format_err};
+use anyhow::Context;
 use reqwest::{self, blocking::Client, blocking::Response};
+use reqwest::header::{HeaderMap, InvalidHeaderValue, HeaderValue, USER_AGENT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 
 use crate::{Commit, GitDate, parse_to_utc_date};
@@ -27,14 +28,15 @@ struct GithubAuthor {
 }
 
 impl GithubCommitElem {
-    fn date(&self) -> Result<GitDate, Error> {
-        let (date_str, _) = self.commit.committer.date.split_once("T").ok_or_else(|| {
-            format_err!("commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z")
-        })?;
+    fn date(&self) -> anyhow::Result<GitDate> {
+        let (date_str, _) =
+            self.commit.committer.date.split_once('T').context(
+                "commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z",
+            )?;
         Ok(parse_to_utc_date(date_str)?)
     }
 
-    fn git_commit(self) -> Result<Commit, Error> {
+    fn git_commit(self) -> anyhow::Result<Commit> {
         let date = self.date()?;
         Ok(Commit {
             sha: self.sha,
@@ -44,20 +46,20 @@ impl GithubCommitElem {
     }
 }
 
-fn headers() -> Result<reqwest::header::HeaderMap, Error> {
-    let mut headers = reqwest::header::HeaderMap::new();
+fn headers() -> Result<HeaderMap, InvalidHeaderValue> {
+    let mut headers = HeaderMap::new();
     let user_agent = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
-    let user_agent = reqwest::header::HeaderValue::from_static(user_agent);
-    headers.insert(reqwest::header::USER_AGENT, user_agent);
+    let user_agent = HeaderValue::from_static(user_agent);
+    headers.insert(USER_AGENT, user_agent);
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         eprintln!("adding local env GITHUB_TOKEN value to headers in github query");
-        let value = reqwest::header::HeaderValue::from_str(&format!("token {}", token))?;
-        headers.insert(reqwest::header::AUTHORIZATION, value);
+        let value = HeaderValue::from_str(&format!("token {token}"))?;
+        headers.insert(AUTHORIZATION, value);
     }
     Ok(headers)
 }
 
-pub(crate) fn get_commit(sha: &str) -> Result<Commit, Error> {
+pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
     let url = CommitDetailsUrl { sha }.url();
     let client = Client::builder().default_headers(headers()?).build()?;
     let response: Response = client.get(&url).send()?;
@@ -76,7 +78,7 @@ pub(crate) struct CommitsQuery<'a> {
 /// (boundaries inclusive).
 
 impl CommitsQuery<'_> {
-    pub fn get_commits(&self) -> Result<Vec<Commit>, Error> {
+    pub fn get_commits(&self) -> anyhow::Result<Vec<Commit>> {
         // build up commit sequence, by feeding in `sha` as the starting point, and
         // working way backwards to max(`self.since_date`, `self.earliest_sha`).
         let mut commits = Vec::new();
@@ -151,15 +153,12 @@ impl ToUrl for CommitsUrl<'_> {
     fn url(&self) -> String {
         format!(
             "https://api.github.com/repos/{OWNER}/{REPO}/commits\
-                 ?page={PAGE}&per_page={PER_PAGE}\
-                 &author={AUTHOR}&since={SINCE}&sha={SHA}",
-            OWNER = OWNER,
-            REPO = REPO,
-            PAGE = self.page,
-            PER_PAGE = PER_PAGE,
-            AUTHOR = self.author,
-            SINCE = self.since,
-            SHA = self.sha
+                 ?page={page}&per_page={PER_PAGE}\
+                 &author={author}&since={since}&sha={sha}",
+            page = self.page,
+            author = self.author,
+            since = self.since,
+            sha = self.sha
         )
     }
 }
@@ -175,12 +174,7 @@ impl ToUrl for CommitDetailsUrl<'_> {
             self.sha
         };
 
-        format!(
-            "https://api.github.com/repos/{OWNER}/{REPO}/compare/master...{REF}",
-            OWNER = OWNER,
-            REPO = REPO,
-            REF = reference
-        )
+        format!("https://api.github.com/repos/{OWNER}/{REPO}/compare/master...{reference}")
     }
 }
 
@@ -191,8 +185,8 @@ enum Loop {
 
 fn parse_paged_elems(
     response: Response,
-    mut k: impl FnMut(GithubCommitElem) -> Result<Loop, Error>,
-) -> Result<Loop, Error> {
+    mut k: impl FnMut(GithubCommitElem) -> anyhow::Result<Loop>,
+) -> anyhow::Result<Loop> {
     let elems: Vec<GithubCommitElem> = response.json()?;
 
     if elems.is_empty() {
