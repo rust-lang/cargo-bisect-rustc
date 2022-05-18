@@ -2,7 +2,7 @@ cargo-bisect-rustc 0.6.3
 Bisects rustc toolchains with rustup
 
 USAGE:
-    cargo-bisect-rustc [OPTIONS] [-- <COMMAND_ARGS>...]
+    cargo-bisect-rustc[EXE] [OPTIONS] [-- <COMMAND_ARGS>...]
 
 ARGS:
     <COMMAND_ARGS>...    Arguments to pass to cargo or the file specified by --script during
