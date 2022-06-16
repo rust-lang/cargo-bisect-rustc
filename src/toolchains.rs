@@ -15,7 +15,6 @@ use reqwest::header::CONTENT_LENGTH;
 use rustc_version::Channel;
 use tar::Archive;
 use tee::TeeReader;
-use tempdir::TempDir;
 use xz2::read::XzDecoder;
 
 use crate::Config;
@@ -109,7 +108,9 @@ impl Toolchain {
     ) -> Result<(), InstallError> {
         let tc_stdstream_str = format!("{self}");
         eprintln!("installing {}", tc_stdstream_str.green());
-        let tmpdir = TempDir::new_in(&dl_params.tmp_dir, &self.rustup_name())
+        let tmpdir = tempfile::Builder::new()
+            .prefix(&self.rustup_name())
+            .tempdir_in(&dl_params.tmp_dir)
             .map_err(InstallError::TempDir)?;
         let dest = dl_params.install_dir.join(self.rustup_name());
         if dl_params.force_install {
