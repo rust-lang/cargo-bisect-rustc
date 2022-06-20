@@ -278,6 +278,7 @@ impl Toolchain {
         };
         cmd.current_dir(&cfg.args.test_dir);
         cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
+        cmd.env("CARGO_BUILD_TARGET", &cfg.target);
 
         // let `cmd` capture stderr for us to process afterward.
         let must_capture_output = cfg.args.regress.must_process_stderr();
