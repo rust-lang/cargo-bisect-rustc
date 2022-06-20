@@ -33,7 +33,7 @@ clap = { version = "3.2", features = ["derive"] }
 tar = "0.4"
 tee = "0.1"
 tempfile = "3"
-xz2 = "0.1.6"
+xz2 = "0.1.7"
 chrono = "0.4.11"
 colored = "2"
 
