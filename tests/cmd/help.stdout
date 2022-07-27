@@ -32,8 +32,8 @@ OPTIONS:
                                     hangs)
         --target <TARGET>           Cross-compilation target platform
         --test-dir <TEST_DIR>       Root directory for tests [default: .]
+    -v, --verbose                   
     -V, --version                   Print version information
-        --verbose                   
         --with-dev                  Download rustc-dev [default: no download]
         --with-src                  Download rust-src [default: no download]
         --without-cargo             Do not install cargo [default: install cargo]
