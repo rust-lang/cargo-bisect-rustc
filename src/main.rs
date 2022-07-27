@@ -484,6 +484,42 @@ impl Config {
     }
 }
 
+/// Translates a tag-like bound (such as `1.62.0`) to a `Bound::Date` so that
+/// bisecting works for versions older than 167 days.
+fn fixup_bounds(
+    access: &Access,
+    start: &mut Option<Bound>,
+    end: &mut Option<Bound>,
+) -> anyhow::Result<()> {
+    let is_tag = |bound: &Option<Bound>| -> bool {
+        match bound {
+            Some(Bound::Commit(commit)) => commit.contains('.'),
+            None | Some(Bound::Date(_)) => false,
+        }
+    };
+    let is_datelike = |bound: &Option<Bound>| -> bool {
+        matches!(bound, None | Some(Bound::Date(_))) || is_tag(bound)
+    };
+    if !(is_datelike(start) && is_datelike(end)) {
+        // If the user specified an actual commit for one bound, then don't
+        // even try to convert the other bound to a date.
+        return Ok(());
+    }
+    let fixup = |bound: &mut Option<Bound>| -> anyhow::Result<()> {
+        if is_tag(bound) {
+            if let Some(b) = bound.clone() {
+                if is_tag(bound) {
+                    *bound = Some(Bound::Date(access.repo().bound_to_date(b)?));
+                }
+            }
+        }
+        Ok(())
+    };
+    fixup(start)?;
+    fixup(end)?;
+    Ok(())
+}
+
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()> {
     // current UTC date
     let current = Utc::today();
@@ -519,7 +555,8 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()
 // Application entry point
 fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
-    let args = Opts::parse();
+    let mut args = Opts::parse();
+    fixup_bounds(&args.access, &mut args.start, &mut args.end)?;
     check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
 
