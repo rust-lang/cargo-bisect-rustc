@@ -130,7 +130,7 @@ struct Opts {
     )]
     timeout: Option<usize>,
 
-    #[clap(long = "verbose", parse(from_occurrences))]
+    #[clap(short, long = "verbose", parse(from_occurrences))]
     verbosity: usize,
 
     #[clap(
