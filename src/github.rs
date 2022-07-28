@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use reqwest::{self, blocking::Client, blocking::Response};
 use reqwest::header::{HeaderMap, InvalidHeaderValue, HeaderValue, USER_AGENT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
@@ -63,7 +63,18 @@ pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
     let url = CommitDetailsUrl { sha }.url();
     let client = Client::builder().default_headers(headers()?).build()?;
     let response: Response = client.get(&url).send()?;
-    let elem: GithubCommitComparison = response.json()?;
+    let status = response.status();
+    if !status.is_success() {
+        bail!(
+            "error: url <{}> response {}: {}",
+            url,
+            status,
+            response.text().unwrap_or_else(|_| format!("<empty>"))
+        );
+    }
+    let elem: GithubCommitComparison = response
+        .json()
+        .with_context(|| "failed to decode GitHub JSON response")?;
     elem.merge_base_commit.git_commit()
 }
 
