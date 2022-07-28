@@ -505,18 +505,21 @@ fn fixup_bounds(
         // even try to convert the other bound to a date.
         return Ok(());
     }
-    let fixup = |bound: &mut Option<Bound>| -> anyhow::Result<()> {
+    let fixup = |which: &str, bound: &mut Option<Bound>| -> anyhow::Result<()> {
         if is_tag(bound) {
-            if let Some(b) = bound.clone() {
-                if is_tag(bound) {
-                    *bound = Some(Bound::Date(access.repo().bound_to_date(b)?));
-                }
+            if let Some(Bound::Commit(tag)) = bound {
+                let date = access.repo().bound_to_date(Bound::Commit(tag.clone()))?;
+                eprintln!(
+                    "translating --{which}={tag} to {date}",
+                    date = date.format(YYYY_MM_DD)
+                );
+                *bound = Some(Bound::Date(date));
             }
         }
         Ok(())
     };
-    fixup(start)?;
-    fixup(end)?;
+    fixup("start", start)?;
+    fixup("end", end)?;
     Ok(())
 }
 
