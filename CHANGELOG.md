@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.6.4
+
+### Added
+
+- Added the `--component` option to choose optional components to install.
+  [#131](https://github.com/rust-lang/cargo-bisect-rustc/pull/131)
+- An estimate of the number of steps left to run is now displayed.
+  [#178](https://github.com/rust-lang/cargo-bisect-rustc/pull/178)
+
+### Changed
+
+- Various code refactorings and dependency updates. These shouldn't have
+  significant noticeable changes.
+  [#151](https://github.com/rust-lang/cargo-bisect-rustc/pull/151)
+  [#152](https://github.com/rust-lang/cargo-bisect-rustc/pull/152)
+  [#153](https://github.com/rust-lang/cargo-bisect-rustc/pull/153)
+  [#155](https://github.com/rust-lang/cargo-bisect-rustc/pull/155)
+  [#156](https://github.com/rust-lang/cargo-bisect-rustc/pull/156)
+- The `CARGO_BUILD_TARGET` environment variable is now set with the target triple.
+  [#159](https://github.com/rust-lang/cargo-bisect-rustc/pull/159)
+- The default release profile now uses stripping and LTO to significantly
+  reduce the binary size.
+  [#157](https://github.com/rust-lang/cargo-bisect-rustc/pull/157)
+- Bounds with tags like `--start=1.62.0` are now translated to a nightly date
+  instead of a master git commit. This allows using tags from releases more
+  than 6 months old.
+  [#177](https://github.com/rust-lang/cargo-bisect-rustc/pull/177)
+
 ## v0.6.3
 
 ### Fixed

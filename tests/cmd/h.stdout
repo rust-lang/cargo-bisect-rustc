@@ -1,4 +1,4 @@
-cargo-bisect-rustc 0.6.3
+cargo-bisect-rustc 0.6.4
 Bisects rustc toolchains with rustup
 
 USAGE:
