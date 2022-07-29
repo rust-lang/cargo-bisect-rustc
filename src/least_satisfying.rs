@@ -7,7 +7,11 @@ where
     P: FnMut(&T, usize, usize) -> Satisfies,
 {
     let mut cache = BTreeMap::new();
-    let mut predicate = |idx: usize, remaining, estimate| {
+    let mut predicate = |idx: usize, rm_no, lm_yes| {
+        let range = lm_yes - rm_no + 1;
+        // FIXME: This does not consider unknown_ranges.
+        let remaining = range / 2;
+        let estimate = estimate_steps(range);
         *cache
             .entry(idx)
             .or_insert_with(|| predicate(&slice[idx], remaining, estimate))
@@ -44,11 +48,7 @@ where
             }
         }
 
-        let mut range = lm_yes - rm_no + 1;
-        // FIXME: This does not consider unknown_ranges.
-        let mut remaining = range / 2;
-        let estimate = estimate_steps(range);
-        let r = predicate(next, remaining, estimate);
+        let r = predicate(next, rm_no, lm_yes);
         match r {
             Satisfies::Yes => {
                 lm_yes = next;
@@ -60,20 +60,14 @@ where
             }
             Satisfies::Unknown => {
                 let mut left = next;
-                while left > 0
-                    && predicate(left, remaining, estimate_steps(range)) == Satisfies::Unknown
-                {
+                while left > 0 && predicate(left, rm_no, lm_yes) == Satisfies::Unknown {
                     left -= 1;
-                    remaining = remaining.saturating_sub(1);
-                    range = range.saturating_sub(1);
                 }
                 let mut right = next;
                 while right + 1 < slice.len()
-                    && predicate(right, remaining, estimate_steps(range)) == Satisfies::Unknown
+                    && predicate(right, rm_no, lm_yes) == Satisfies::Unknown
                 {
                     right += 1;
-                    remaining = remaining.saturating_sub(1);
-                    range = range.saturating_sub(1);
                 }
                 unknown_ranges.push((left + 1, right - 1));
                 next = left;
