@@ -677,6 +677,11 @@ impl Config {
         eprintln!("searched toolchains {} through {}", start, end);
 
         if toolchains[*found] == *toolchains.last().unwrap() {
+            // FIXME: Ideally the BisectionResult would contain the final result.
+            // This ends up testing a toolchain that was already tested.
+            // I believe this is one of the duplicates mentioned in
+            // https://github.com/rust-lang/cargo-bisect-rustc/issues/85
+            eprintln!("checking last toolchain to determine final result");
             let t = &toolchains[*found];
             let r = match t.install(&self.client, dl_spec) {
                 Ok(()) => {
@@ -879,7 +884,10 @@ impl Config {
     }
 
     fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
-        least_satisfying(toolchains, |t| {
+        least_satisfying(toolchains, |t, remaining, estimate| {
+            eprintln!(
+                "{remaining} versions remaining to test after this (roughly {estimate} steps)"
+            );
             self.install_and_test(t, dl_spec)
                 .unwrap_or(Satisfies::Unknown)
         })
@@ -965,6 +973,7 @@ impl Config {
                 );
             }
 
+            eprintln!("checking the start range to find a passing nightly");
             match self.install_and_test(&t, &dl_spec) {
                 Ok(r) => {
                     // If Satisfies::No, then the regression was not identified in this nightly.
@@ -1011,6 +1020,7 @@ impl Config {
         t_end.std_targets.sort();
         t_end.std_targets.dedup();
 
+        eprintln!("checking the end range to verify it does not pass");
         let result_nightly = self.install_and_test(&t_end, &dl_spec)?;
         // The regression was not identified in this nightly.
         if result_nightly == Satisfies::No {
@@ -1157,6 +1167,7 @@ impl Config {
 
         if !toolchains.is_empty() {
             // validate commit at start of range
+            eprintln!("checking the start range to verify it passes");
             let start_range_result = self.install_and_test(&toolchains[0], &dl_spec)?;
             if start_range_result == Satisfies::Yes {
                 bail!(
@@ -1166,6 +1177,7 @@ impl Config {
             }
 
             // validate commit at end of range
+            eprintln!("checking the end range to verify it does not pass");
             let end_range_result =
                 self.install_and_test(&toolchains[toolchains.len() - 1], &dl_spec)?;
             if end_range_result == Satisfies::No {

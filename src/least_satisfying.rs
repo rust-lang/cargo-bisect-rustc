@@ -4,10 +4,18 @@ use std::fmt;
 pub fn least_satisfying<T, P>(slice: &[T], mut predicate: P) -> usize
 where
     T: fmt::Display + fmt::Debug,
-    P: FnMut(&T) -> Satisfies,
+    P: FnMut(&T, usize, usize) -> Satisfies,
 {
     let mut cache = BTreeMap::new();
-    let mut predicate = |idx: usize| *cache.entry(idx).or_insert_with(|| predicate(&slice[idx]));
+    let mut predicate = |idx: usize, rm_no, lm_yes| {
+        let range = lm_yes - rm_no + 1;
+        // FIXME: This does not consider unknown_ranges.
+        let remaining = range / 2;
+        let estimate = estimate_steps(range);
+        *cache
+            .entry(idx)
+            .or_insert_with(|| predicate(&slice[idx], remaining, estimate))
+    };
     let mut unknown_ranges: Vec<(usize, usize)> = Vec::new();
     // presume that the slice starts with a no
     // this should be tested before call
@@ -40,7 +48,7 @@ where
             }
         }
 
-        let r = predicate(next);
+        let r = predicate(next, rm_no, lm_yes);
         match r {
             Satisfies::Yes => {
                 lm_yes = next;
@@ -52,11 +60,13 @@ where
             }
             Satisfies::Unknown => {
                 let mut left = next;
-                while left > 0 && predicate(left) == Satisfies::Unknown {
+                while left > 0 && predicate(left, rm_no, lm_yes) == Satisfies::Unknown {
                     left -= 1;
                 }
                 let mut right = next;
-                while right + 1 < slice.len() && predicate(right) == Satisfies::Unknown {
+                while right + 1 < slice.len()
+                    && predicate(right, rm_no, lm_yes) == Satisfies::Unknown
+                {
                     right += 1;
                 }
                 unknown_ranges.push((left + 1, right - 1));
@@ -66,10 +76,33 @@ where
     }
 }
 
+fn estimate_steps(range: usize) -> usize {
+    // Replace with int_log when it is stabilized.
+    let log2 = |mut n| {
+        let mut r = 0;
+        while n > 1 {
+            r += 1;
+            n >>= 1;
+        }
+        r
+    };
+    if range < 3 {
+        return 0;
+    }
+    let n = log2(range);
+    let e = 1 << n;
+    let x = range - e;
+    if e < 3 * x {
+        n
+    } else {
+        n - 1
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Satisfies::{No, Unknown, Yes};
-    use super::{least_satisfying, Satisfies};
+    use super::{estimate_steps, least_satisfying, Satisfies};
     use quickcheck::{QuickCheck, TestResult};
 
     fn prop(xs: Vec<Option<bool>>) -> TestResult {
@@ -89,7 +122,7 @@ mod tests {
             }
         }
 
-        let res = least_satisfying(&satisfies_v, |i| *i);
+        let res = least_satisfying(&satisfies_v, |i, _, _| *i);
         let exp = first_yes.unwrap();
         TestResult::from_bool(res == exp)
     }
@@ -97,7 +130,7 @@ mod tests {
     #[test]
     fn least_satisfying_1() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes], |i| *i),
+            least_satisfying(&[No, Unknown, Unknown, No, Yes], |i, _, _| *i),
             4
         );
     }
@@ -105,43 +138,46 @@ mod tests {
     #[test]
     fn least_satisfying_2() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i| *i),
+            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i, _, _| *i),
             2
         );
     }
 
     #[test]
     fn least_satisfying_3() {
-        assert_eq!(least_satisfying(&[No, No, No, No, Yes], |i| *i), 4);
+        assert_eq!(least_satisfying(&[No, No, No, No, Yes], |i, _, _| *i), 4);
     }
 
     #[test]
     fn least_satisfying_4() {
-        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i| *i), 2);
+        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i, _, _| *i), 2);
     }
 
     #[test]
     fn least_satisfying_5() {
-        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i| *i), 1);
+        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i, _, _| *i), 1);
     }
 
     #[test]
     fn least_satisfying_6() {
         assert_eq!(
-            least_satisfying(&[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes], |i| *i),
+            least_satisfying(
+                &[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes],
+                |i, _, _| *i
+            ),
             1
         );
     }
 
     #[test]
     fn least_satisfying_7() {
-        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i| *i), 1);
+        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i, _, _| *i), 1);
     }
 
     #[test]
     fn least_satisfying_8() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], |i| *i),
+            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], |i, _, _| *i),
             5
         );
     }
@@ -149,6 +185,22 @@ mod tests {
     #[test]
     fn qc_prop() {
         QuickCheck::new().quickcheck(prop as fn(_) -> _);
+    }
+
+    #[test]
+    fn estimates() {
+        for (n, expect) in &[
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (3, 1),
+            (4, 1),
+            (5, 1),
+            (6, 2),
+            (150, 6),
+        ] {
+            assert_eq!(estimate_steps(*n), *expect);
+        }
     }
 }
 
