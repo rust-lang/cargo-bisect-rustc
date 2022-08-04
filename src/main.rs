@@ -58,6 +58,17 @@ const REPORT_HEADER: &str = "\
 
 #[derive(Debug, Parser)]
 #[clap(
+    bin_name = "cargo",
+    disable_help_flag = true,
+    subcommand_required = true
+)]
+enum Cargo {
+    BisectRustc(Opts),
+}
+
+#[derive(Debug, Parser)]
+#[clap(
+    bin_name = "cargo bisect-rustc",
     version,
     about,
     after_help = "EXAMPLES:
@@ -74,6 +85,9 @@ const REPORT_HEADER: &str = "\
 )]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
+    #[clap(long, short, action = clap::builder::ArgAction::Help, help = "Print help information")]
+    help: bool,
+
     #[clap(
         long,
         help = "Custom regression definition",
@@ -558,7 +572,16 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()
 // Application entry point
 fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
-    let mut args = Opts::parse();
+    let mut args = match Cargo::try_parse() {
+        Ok(Cargo::BisectRustc(args)) => args,
+        Err(e) => match e.context().next() {
+            None => {
+                Cargo::parse();
+                unreachable!()
+            }
+            _ => Opts::parse(),
+        },
+    };
     fixup_bounds(&args.access, &mut args.start, &mut args.end)?;
     check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
