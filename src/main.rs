@@ -282,7 +282,7 @@ impl Config {
         );
 
         let saw_ice = stderr_utf8.contains("error: internal compiler error")
-            || stderr_utf8.contains("thread 'rustc' has overflowed its stack");
+            || stderr_utf8.contains("' has overflowed its stack");
 
         let input = (self.args.regress, status.success());
         let result = match input {
