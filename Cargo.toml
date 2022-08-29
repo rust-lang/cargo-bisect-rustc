@@ -34,7 +34,7 @@ tar = "0.4"
 tee = "0.1"
 tempfile = "3"
 xz2 = "0.1.7"
-chrono = "0.4.20"
+chrono = "0.4.22"
 colored = "2"
 
 [dev-dependencies]
