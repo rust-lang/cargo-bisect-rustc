@@ -57,11 +57,7 @@ const REPORT_HEADER: &str = "\
 ==================================================================================";
 
 #[derive(Debug, Parser)]
-#[clap(
-    bin_name = "cargo",
-    disable_help_flag = true,
-    subcommand_required = true
-)]
+#[clap(bin_name = "cargo", subcommand_required = true)]
 enum Cargo {
     BisectRustc(Opts),
 }
@@ -85,9 +81,6 @@ enum Cargo {
 )]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
-    #[clap(long, short, action = clap::builder::ArgAction::Help, help = "Print help information")]
-    help: bool,
-
     #[clap(
         long,
         help = "Custom regression definition",

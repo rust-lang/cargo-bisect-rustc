@@ -1,2 +1,2 @@
 bin.name = "cargo-bisect-rustc"
-args = "--help"
+args = "bisect-rustc --help"
