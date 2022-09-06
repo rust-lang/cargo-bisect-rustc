@@ -95,9 +95,8 @@ struct Opts {
     #[clap(
         long,
         help = "Host triple for the compiler",
-        default_value_t = option_env!("HOST").unwrap_or("unkown").to_string(),
-        validator = validate_host
-        )]
+        default_value = env!("HOST"),
+    )]
     host: String,
 
     #[clap(long, help = "Cross-compilation target platform")]
@@ -177,8 +176,7 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[clap(
         long,
         help = "Script replacement for `cargo build` command",
-        parse(from_os_str),
-        validator = validate_file,
+        parse(from_os_str)
     )]
     script: Option<PathBuf>,
 
@@ -197,25 +195,6 @@ fn validate_dir(s: &str) -> anyhow::Result<()> {
             "{} is not an existing directory",
             path.canonicalize()?.display()
         )
-    }
-}
-
-fn validate_file(s: &str) -> anyhow::Result<()> {
-    let path: PathBuf = s.parse()?;
-    if path.is_file() {
-        Ok(())
-    } else {
-        bail!("{} is not an existing file", path.canonicalize()?.display())
-    }
-}
-
-fn validate_host(s: &str) -> anyhow::Result<()> {
-    if s == "unknown" {
-        bail!(
-            "Failed to auto-detect host triple and was not specified. Please provide it via --host"
-        )
-    } else {
-        Ok(())
     }
 }
 
@@ -1285,18 +1264,6 @@ mod tests {
         let main = "src/main.rs";
         assert!(
             validate_dir(main).is_err(),
-            "{}",
-            validate_dir(main).unwrap_err()
-        )
-    }
-
-    #[test]
-    fn test_validate_file() {
-        let current_dir = ".";
-        assert!(validate_file(current_dir).is_err());
-        let main = "src/main.rs";
-        assert!(
-            validate_file(main).is_ok(),
             "{}",
             validate_dir(main).unwrap_err()
         )
