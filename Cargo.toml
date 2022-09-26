@@ -39,4 +39,4 @@ colored = "2"
 
 [dev-dependencies]
 quickcheck = "1"
-trycmd = "0.13.6"
+trycmd = "0.13.7"
