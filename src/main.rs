@@ -142,8 +142,7 @@ struct Opts {
     #[arg(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
         num_args = 1..,
-        last = true,
-        value_parser
+        last = true
     )]
     command_args: Vec<OsString>,
 
@@ -173,11 +172,7 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[arg(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
-    #[arg(
-        long,
-        help = "Script replacement for `cargo build` command",
-        value_parser
-    )]
+    #[arg(long, help = "Script replacement for `cargo build` command")]
     script: Option<PathBuf>,
 
     #[arg(long, help = "Do not install cargo [default: install cargo]")]
