@@ -14,7 +14,7 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
-use clap::{ArgEnum, Parser, PossibleValue};
+use clap::{ArgAction, ArgEnum, Parser, PossibleValue};
 use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
@@ -136,8 +136,8 @@ struct Opts {
     )]
     timeout: Option<usize>,
 
-    #[clap(short, long = "verbose", parse(from_occurrences))]
-    verbosity: usize,
+    #[clap(short, long = "verbose", action = ArgAction::Count)]
+    verbosity: u8,
 
     #[clap(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
