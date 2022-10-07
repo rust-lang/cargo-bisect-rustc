@@ -121,7 +121,7 @@ struct Opts {
         long,
         help = "Root directory for tests",
         default_value = ".",
-        parse(from_os_str),
+        value_parser,
         validator = validate_dir
     )]
     test_dir: PathBuf,
@@ -143,7 +143,7 @@ struct Opts {
         help = "Arguments to pass to cargo or the file specified by --script during tests",
         multiple_values = true,
         last = true,
-        parse(from_os_str)
+        value_parser
     )]
     command_args: Vec<OsString>,
 
@@ -176,7 +176,7 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[clap(
         long,
         help = "Script replacement for `cargo build` command",
-        parse(from_os_str)
+        value_parser
     )]
     script: Option<PathBuf>,
 
