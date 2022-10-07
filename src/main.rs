@@ -82,7 +82,7 @@ enum Cargo {
 )]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
-    #[clap(
+    #[arg(
         long,
         help = "Custom regression definition",
         value_enum,
@@ -90,35 +90,35 @@ struct Opts {
     )]
     regress: RegressOn,
 
-    #[clap(short, long, help = "Download the alt build instead of normal build")]
+    #[arg(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[clap(
+    #[arg(
         long,
         help = "Host triple for the compiler",
         default_value = env!("HOST"),
     )]
     host: String,
 
-    #[clap(long, help = "Cross-compilation target platform")]
+    #[arg(long, help = "Cross-compilation target platform")]
     target: Option<String>,
 
-    #[clap(long, help = "Preserve the downloaded artifacts")]
+    #[arg(long, help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[clap(long, help = "Preserve the target directory used for builds")]
+    #[arg(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
-    #[clap(long, help = "Download rust-src [default: no download]")]
+    #[arg(long, help = "Download rust-src [default: no download]")]
     with_src: bool,
 
-    #[clap(long, help = "Download rustc-dev [default: no download]")]
+    #[arg(long, help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
-    #[clap(short, long = "component", help = "additional components to install")]
+    #[arg(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
 
-    #[clap(
+    #[arg(
         long,
         help = "Root directory for tests",
         default_value = ".",
@@ -126,20 +126,20 @@ struct Opts {
     )]
     test_dir: PathBuf,
 
-    #[clap(long, help = "Manually evaluate for regression with prompts")]
+    #[arg(long, help = "Manually evaluate for regression with prompts")]
     prompt: bool,
 
-    #[clap(
+    #[arg(
         long,
         short,
         help = "Assume failure after specified number of seconds (for bisecting hangs)"
     )]
     timeout: Option<usize>,
 
-    #[clap(short, long = "verbose", action = ArgAction::Count)]
+    #[arg(short, long = "verbose", action = ArgAction::Count)]
     verbosity: u8,
 
-    #[clap(
+    #[arg(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
         num_args = 1..,
         last = true,
@@ -147,40 +147,40 @@ struct Opts {
     )]
     command_args: Vec<OsString>,
 
-    #[clap(
+    #[arg(
         long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     start: Option<Bound>,
 
-    #[clap(
+    #[arg(
         long,
         help = "Right bound for search (*with* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     end: Option<Bound>,
 
-    #[clap(long, help = "Bisect via commit artifacts")]
+    #[arg(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[clap(long, value_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
+    #[arg(long, value_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
     access: Access,
 
-    #[clap(long, help = "Install the given artifact")]
+    #[arg(long, help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[clap(long, help = "Force installation over existing artifacts")]
+    #[arg(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
-    #[clap(
+    #[arg(
         long,
         help = "Script replacement for `cargo build` command",
         value_parser
     )]
     script: Option<PathBuf>,
 
-    #[clap(long, help = "Do not install cargo [default: install cargo]")]
+    #[arg(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 }
 
