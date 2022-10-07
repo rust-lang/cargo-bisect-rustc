@@ -121,8 +121,7 @@ struct Opts {
         long,
         help = "Root directory for tests",
         default_value = ".",
-        value_parser,
-        validator = validate_dir
+        value_parser = validate_dir
     )]
     test_dir: PathBuf,
 
@@ -186,10 +185,10 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
 
 pub type GitDate = Date<Utc>;
 
-fn validate_dir(s: &str) -> anyhow::Result<()> {
+fn validate_dir(s: &str) -> anyhow::Result<PathBuf> {
     let path: PathBuf = s.parse()?;
     if path.is_dir() {
-        Ok(())
+        Ok(path)
     } else {
         bail!(
             "{} is not an existing directory",
