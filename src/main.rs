@@ -57,13 +57,13 @@ const REPORT_HEADER: &str = "\
 ==================================================================================";
 
 #[derive(Debug, Parser)]
-#[clap(bin_name = "cargo", subcommand_required = true)]
+#[command(bin_name = "cargo", subcommand_required = true)]
 enum Cargo {
     BisectRustc(Opts),
 }
 
 #[derive(Debug, Parser)]
-#[clap(
+#[command(
     bin_name = "cargo bisect-rustc",
     version,
     about,
