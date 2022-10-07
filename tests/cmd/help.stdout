@@ -35,7 +35,7 @@ Options:
       --with-src                Download rust-src [default: no download]
       --without-cargo           Do not install cargo [default: install cargo]
 
-EXAMPLES:
+Examples:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
     cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check

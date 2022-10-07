@@ -68,7 +68,7 @@ enum Cargo {
     version,
     about,
     next_display_order = None,
-    after_help = "EXAMPLES:
+    after_help = "Examples:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
     cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
