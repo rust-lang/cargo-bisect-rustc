@@ -67,6 +67,7 @@ enum Cargo {
     bin_name = "cargo bisect-rustc",
     version,
     about,
+    next_display_order = None,
     after_help = "EXAMPLES:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
