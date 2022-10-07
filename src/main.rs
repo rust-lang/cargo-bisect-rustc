@@ -14,7 +14,7 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
-use clap::{ArgAction, ArgEnum, Parser, PossibleValue};
+use clap::{ArgAction, Parser, ValueEnum, builder::PossibleValue};
 use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
@@ -85,7 +85,7 @@ struct Opts {
     #[clap(
         long,
         help = "Custom regression definition",
-        arg_enum,
+        value_enum,
         default_value_t = RegressOn::ErrorStatus,
     )]
     regress: RegressOn,
@@ -141,7 +141,7 @@ struct Opts {
 
     #[clap(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
-        multiple_values = true,
+        num_args = 1..,
         last = true,
         value_parser
     )]
@@ -164,7 +164,7 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[clap(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[clap(long, arg_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
+    #[clap(long, value_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
     access: Access,
 
     #[clap(long, help = "Install the given artifact")]
@@ -300,7 +300,7 @@ impl Config {
     }
 }
 
-#[derive(ArgEnum, Clone, Debug)]
+#[derive(Clone, Debug, ValueEnum)]
 enum Access {
     Checkout,
     Github,
@@ -370,7 +370,7 @@ enum RegressOn {
     NonCleanError,
 }
 
-impl ArgEnum for RegressOn {
+impl ValueEnum for RegressOn {
     fn value_variants<'a>() -> &'a [Self] {
         &[
             Self::ErrorStatus,
@@ -380,7 +380,7 @@ impl ArgEnum for RegressOn {
             Self::NonCleanError,
         ]
     }
-    fn to_possible_value<'a>(&self) -> Option<PossibleValue<'a>> {
+    fn to_possible_value(&self) -> Option<PossibleValue> {
         Some(PossibleValue::new(match self {
             Self::ErrorStatus => "error",
             Self::NonCleanError => "non-error",
