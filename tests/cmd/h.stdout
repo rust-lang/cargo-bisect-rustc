@@ -14,7 +14,7 @@ Options:
       --end <END>               Right bound for search (*with* regression). You can use a date
                                 (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
       --force-install           Force installation over existing artifacts
-  -h, --help                    Print help information
+  -h, --help                    Print help information (use `--help` for more detail)
       --host <HOST>             Host triple for the compiler [default: x86_64-unknown-linux-gnu]
       --install <INSTALL>       Install the given artifact
       --preserve                Preserve the downloaded artifacts

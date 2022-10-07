@@ -14,7 +14,7 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
-use clap::{ArgAction, Parser, ValueEnum, builder::PossibleValue};
+use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
@@ -86,7 +86,7 @@ struct Opts {
         long,
         help = "Custom regression definition",
         value_enum,
-        default_value_t = RegressOn::ErrorStatus,
+        default_value_t = RegressOn::Error,
     )]
     regress: RegressOn,
 
@@ -272,19 +272,18 @@ impl Config {
 
         let input = (self.args.regress, status.success());
         let result = match input {
-            (RegressOn::ErrorStatus, true) | (RegressOn::SuccessStatus, false) => {
-                TestOutcome::Baseline
+            (RegressOn::Error, true) | (RegressOn::Success, false) => TestOutcome::Baseline,
+            (RegressOn::Error, false) | (RegressOn::Success | RegressOn::NonError, true) => {
+                TestOutcome::Regressed
             }
-            (RegressOn::ErrorStatus, false)
-            | (RegressOn::SuccessStatus | RegressOn::NonCleanError, true) => TestOutcome::Regressed,
-            (RegressOn::IceAlone, _) | (RegressOn::NonCleanError, false) => {
+            (RegressOn::Ice, _) | (RegressOn::NonError, false) => {
                 if saw_ice {
                     TestOutcome::Regressed
                 } else {
                     TestOutcome::Baseline
                 }
             }
-            (RegressOn::NotIce, _) => {
+            (RegressOn::NonIce, _) => {
                 if saw_ice {
                     TestOutcome::Baseline
                 } else {
@@ -315,87 +314,52 @@ impl Access {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
 /// Customize what is treated as regression.
 enum RegressOn {
-    /// `ErrorStatus`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process reports a non-success status. This corresponds to
-    /// when `rustc` has an internal compiler error (ICE) or when it detects an
-    /// error in the input program.
-    ///
+    /// Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process reports a non-success status. This corresponds to when `rustc`
+    /// has an internal compiler error (ICE) or when it detects an error in the
+    /// input program.
     /// This covers the most common use case for `cargo-bisect-rustc` and is
     /// thus the default setting.
-    ///
-    /// You explicitly opt into this seting via `--regress=error`.
-    ErrorStatus,
+    Error,
 
-    /// `SuccessStatus`: Marks test outcome as `Regressed` if and only
-    /// if the `rustc` process reports a success status. This corresponds to
-    /// when `rustc` believes it has successfully compiled the program. This
-    /// covers the use case for when you want to bisect to see when a bug was
-    /// fixed.
-    ///
-    /// You explicitly opt into this seting via `--regress=success`.
-    SuccessStatus,
+    /// Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process reports a success status. This corresponds to when `rustc`
+    /// believes it has successfully compiled the program. This covers the use
+    /// case for when you want to bisect to see when a bug was fixed.
+    Success,
 
-    /// `IceAlone`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process issues a diagnostic indicating that an internal
+    /// `Ice`: Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process issues a diagnostic indicating that an internal compiler error
+    /// (ICE) occurred. This covers the use case for when you want to bisect to
+    /// see when an ICE was introduced pon a codebase that is meant to produce
+    /// a clean error.
+    Ice,
+
+    /// `NonIce`: Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process does not issue a diagnostic indicating that an internal
     /// compiler error (ICE) occurred. This covers the use case for when you
-    /// want to bisect to see when an ICE was introduced pon a codebase that is
-    /// meant to produce a clean error.
-    ///
-    /// You explicitly opt into this seting via `--regress=ice`.
-    IceAlone,
+    /// want to bisect to see when an ICE was fixed.
+    NonIce,
 
-    /// `NotIce`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process does not issue a diagnostic indicating that an
-    /// internal compiler error (ICE) occurred. This covers the use case for
-    /// when you want to bisect to see when an ICE was fixed.
-    ///
-    /// You explicitly opt into this setting via `--regress=non-ice`
-    NotIce,
-
-    /// `NonCleanError`: Marks test outcome as `Baseline` if and only
-    /// if the `rustc` process reports error status and does not issue any
-    /// diagnostic indicating that an internal compiler error (ICE) occurred.
-    /// This is the use case if the regression is a case where an ill-formed
-    /// program has stopped being properly rejected by the compiler.
-    ///
-    /// (The main difference between this case and `SuccessStatus` is
-    /// the handling of ICE: `SuccessStatus` assumes that ICE should be
-    /// considered baseline; `NonCleanError` assumes ICE should be
-    /// considered a sign of a regression.)
-    ///
-    /// You explicitly opt into this seting via `--regress=non-error`.
-    NonCleanError,
-}
-
-impl ValueEnum for RegressOn {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[
-            Self::ErrorStatus,
-            Self::SuccessStatus,
-            Self::IceAlone,
-            Self::NotIce,
-            Self::NonCleanError,
-        ]
-    }
-    fn to_possible_value(&self) -> Option<PossibleValue> {
-        Some(PossibleValue::new(match self {
-            Self::ErrorStatus => "error",
-            Self::NonCleanError => "non-error",
-            Self::IceAlone => "ice",
-            Self::NotIce => "non-ice",
-            Self::SuccessStatus => "success",
-        }))
-    }
+    /// `NonError`: Marks test outcome as `Baseline` if and only if the `rustc`
+    /// process reports error status and does not issue any diagnostic
+    /// indicating that an internal compiler error (ICE) occurred. This is the
+    /// use case if the regression is a case where an ill-formed program has
+    /// stopped being properly rejected by the compiler.
+    /// (The main difference between this case and `Success` is the handling of
+    /// ICE: `Success` assumes that ICE should be considered baseline;
+    /// `NonError` assumes ICE should be considered a sign of a regression.)
+    NonError,
 }
 
 impl RegressOn {
     fn must_process_stderr(self) -> bool {
         match self {
-            RegressOn::ErrorStatus | RegressOn::SuccessStatus => false,
-            RegressOn::NonCleanError | RegressOn::IceAlone | RegressOn::NotIce => true,
+            RegressOn::Error | RegressOn::Success => false,
+            RegressOn::NonError | RegressOn::Ice | RegressOn::NonIce => true,
         }
     }
 }

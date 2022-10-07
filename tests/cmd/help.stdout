@@ -3,37 +3,118 @@ Bisects rustc toolchains with rustup
 Usage: cargo bisect-rustc [OPTIONS] [-- <COMMAND_ARGS>...]
 
 Arguments:
-  [COMMAND_ARGS]...  Arguments to pass to cargo or the file specified by --script during tests
+  [COMMAND_ARGS]...
+          Arguments to pass to cargo or the file specified by --script during tests
 
 Options:
-  -a, --alt                     Download the alt build instead of normal build
-      --access <ACCESS>         How to access Rust git repository [default: checkout] [possible
-                                values: checkout, github]
-      --by-commit               Bisect via commit artifacts
-  -c, --component <COMPONENTS>  additional components to install
-      --end <END>               Right bound for search (*with* regression). You can use a date
-                                (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
-      --force-install           Force installation over existing artifacts
-  -h, --help                    Print help information
-      --host <HOST>             Host triple for the compiler [default: x86_64-unknown-linux-gnu]
-      --install <INSTALL>       Install the given artifact
-      --preserve                Preserve the downloaded artifacts
-      --preserve-target         Preserve the target directory used for builds
-      --prompt                  Manually evaluate for regression with prompts
-      --regress <REGRESS>       Custom regression definition [default: error] [possible values:
-                                error, success, ice, non-ice, non-error]
-      --script <SCRIPT>         Script replacement for `cargo build` command
-      --start <START>           Left bound for search (*without* regression). You can use a date
-                                (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
-  -t, --timeout <TIMEOUT>       Assume failure after specified number of seconds (for bisecting
-                                hangs)
-      --target <TARGET>         Cross-compilation target platform
-      --test-dir <TEST_DIR>     Root directory for tests [default: .]
-  -v, --verbose...              
-  -V, --version                 Print version information
-      --with-dev                Download rustc-dev [default: no download]
-      --with-src                Download rust-src [default: no download]
-      --without-cargo           Do not install cargo [default: install cargo]
+  -a, --alt
+          Download the alt build instead of normal build
+
+      --access <ACCESS>
+          How to access Rust git repository
+          
+          [default: checkout]
+          [possible values: checkout, github]
+
+      --by-commit
+          Bisect via commit artifacts
+
+  -c, --component <COMPONENTS>
+          additional components to install
+
+      --end <END>
+          Right bound for search (*with* regression). You can use a date (YYYY-MM-DD), git tag name
+          (e.g. 1.58.0) or git commit SHA.
+
+      --force-install
+          Force installation over existing artifacts
+
+  -h, --help
+          Print help information (use `-h` for a summary)
+
+      --host <HOST>
+          Host triple for the compiler
+          
+          [default: x86_64-unknown-linux-gnu]
+
+      --install <INSTALL>
+          Install the given artifact
+
+      --preserve
+          Preserve the downloaded artifacts
+
+      --preserve-target
+          Preserve the target directory used for builds
+
+      --prompt
+          Manually evaluate for regression with prompts
+
+      --regress <REGRESS>
+          Custom regression definition
+          
+          [default: error]
+
+          Possible values:
+          - error:
+            Marks test outcome as `Regressed` if and only if the `rustc` process reports a
+            non-success status. This corresponds to when `rustc` has an internal compiler error
+            (ICE) or when it detects an error in the input program. This covers the most common use
+            case for `cargo-bisect-rustc` and is thus the default setting
+          - success:
+            Marks test outcome as `Regressed` if and only if the `rustc` process reports a success
+            status. This corresponds to when `rustc` believes it has successfully compiled the
+            program. This covers the use case for when you want to bisect to see when a bug was
+            fixed
+          - ice:
+            `Ice`: Marks test outcome as `Regressed` if and only if the `rustc` process issues a
+            diagnostic indicating that an internal compiler error (ICE) occurred. This covers the
+            use case for when you want to bisect to see when an ICE was introduced pon a codebase
+            that is meant to produce a clean error
+          - non-ice:
+            `NonIce`: Marks test outcome as `Regressed` if and only if the `rustc` process does not
+            issue a diagnostic indicating that an internal compiler error (ICE) occurred. This
+            covers the use case for when you want to bisect to see when an ICE was fixed
+          - non-error:
+            `NonError`: Marks test outcome as `Baseline` if and only if the `rustc` process reports
+            error status and does not issue any diagnostic indicating that an internal compiler
+            error (ICE) occurred. This is the use case if the regression is a case where an
+            ill-formed program has stopped being properly rejected by the compiler. (The main
+            difference between this case and `Success` is the handling of ICE: `Success` assumes
+            that ICE should be considered baseline; `NonError` assumes ICE should be considered a
+            sign of a regression.)
+
+      --script <SCRIPT>
+          Script replacement for `cargo build` command
+
+      --start <START>
+          Left bound for search (*without* regression). You can use a date (YYYY-MM-DD), git tag
+          name (e.g. 1.58.0) or git commit SHA.
+
+  -t, --timeout <TIMEOUT>
+          Assume failure after specified number of seconds (for bisecting hangs)
+
+      --target <TARGET>
+          Cross-compilation target platform
+
+      --test-dir <TEST_DIR>
+          Root directory for tests
+          
+          [default: .]
+
+  -v, --verbose...
+          
+
+  -V, --version
+          Print version information
+
+      --with-dev
+          Download rustc-dev [default: no download]
+
+      --with-src
+          Download rust-src [default: no download]
+
+      --without-cargo
+          Do not install cargo [default: install cargo]
 
 Examples:
     Run a fully automatic nightly bisect doing `cargo check`:
