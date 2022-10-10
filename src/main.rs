@@ -14,7 +14,7 @@ use std::process;
 use std::str::FromStr;
 
 use chrono::{Date, Duration, NaiveDate, Utc};
-use clap::{ArgEnum, Parser, PossibleValue};
+use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
 use anyhow::{bail, Context};
 use log::debug;
@@ -57,17 +57,18 @@ const REPORT_HEADER: &str = "\
 ==================================================================================";
 
 #[derive(Debug, Parser)]
-#[clap(bin_name = "cargo", subcommand_required = true)]
+#[command(bin_name = "cargo", subcommand_required = true)]
 enum Cargo {
     BisectRustc(Opts),
 }
 
 #[derive(Debug, Parser)]
-#[clap(
+#[command(
     bin_name = "cargo bisect-rustc",
     version,
     about,
-    after_help = "EXAMPLES:
+    next_display_order = None,
+    after_help = "Examples:
     Run a fully automatic nightly bisect doing `cargo check`:
     ```
     cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
@@ -81,115 +82,109 @@ enum Cargo {
 )]
 #[allow(clippy::struct_excessive_bools)]
 struct Opts {
-    #[clap(
+    #[arg(
         long,
         help = "Custom regression definition",
-        arg_enum,
-        default_value_t = RegressOn::ErrorStatus,
+        value_enum,
+        default_value_t = RegressOn::Error,
     )]
     regress: RegressOn,
 
-    #[clap(short, long, help = "Download the alt build instead of normal build")]
+    #[arg(short, long, help = "Download the alt build instead of normal build")]
     alt: bool,
 
-    #[clap(
+    #[arg(
         long,
         help = "Host triple for the compiler",
         default_value = env!("HOST"),
     )]
     host: String,
 
-    #[clap(long, help = "Cross-compilation target platform")]
+    #[arg(long, help = "Cross-compilation target platform")]
     target: Option<String>,
 
-    #[clap(long, help = "Preserve the downloaded artifacts")]
+    #[arg(long, help = "Preserve the downloaded artifacts")]
     preserve: bool,
 
-    #[clap(long, help = "Preserve the target directory used for builds")]
+    #[arg(long, help = "Preserve the target directory used for builds")]
     preserve_target: bool,
 
-    #[clap(long, help = "Download rust-src [default: no download]")]
+    #[arg(long, help = "Download rust-src [default: no download]")]
     with_src: bool,
 
-    #[clap(long, help = "Download rustc-dev [default: no download]")]
+    #[arg(long, help = "Download rustc-dev [default: no download]")]
     with_dev: bool,
 
-    #[clap(short, long = "component", help = "additional components to install")]
+    #[arg(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
 
-    #[clap(
+    #[arg(
         long,
         help = "Root directory for tests",
         default_value = ".",
-        parse(from_os_str),
-        validator = validate_dir
+        value_parser = validate_dir
     )]
     test_dir: PathBuf,
 
-    #[clap(long, help = "Manually evaluate for regression with prompts")]
+    #[arg(long, help = "Manually evaluate for regression with prompts")]
     prompt: bool,
 
-    #[clap(
+    #[arg(
         long,
         short,
         help = "Assume failure after specified number of seconds (for bisecting hangs)"
     )]
     timeout: Option<usize>,
 
-    #[clap(short, long = "verbose", parse(from_occurrences))]
-    verbosity: usize,
+    #[arg(short, long = "verbose", action = ArgAction::Count)]
+    verbosity: u8,
 
-    #[clap(
+    #[arg(
         help = "Arguments to pass to cargo or the file specified by --script during tests",
-        multiple_values = true,
-        last = true,
-        parse(from_os_str)
+        num_args = 1..,
+        last = true
     )]
     command_args: Vec<OsString>,
 
-    #[clap(
+    #[arg(
         long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     start: Option<Bound>,
 
-    #[clap(
+    #[arg(
         long,
         help = "Right bound for search (*with* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]
     end: Option<Bound>,
 
-    #[clap(long, help = "Bisect via commit artifacts")]
+    #[arg(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[clap(long, arg_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
+    #[arg(long, value_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
     access: Access,
 
-    #[clap(long, help = "Install the given artifact")]
+    #[arg(long, help = "Install the given artifact")]
     install: Option<Bound>,
 
-    #[clap(long, help = "Force installation over existing artifacts")]
+    #[arg(long, help = "Force installation over existing artifacts")]
     force_install: bool,
 
-    #[clap(
-        long,
-        help = "Script replacement for `cargo build` command",
-        parse(from_os_str)
-    )]
+    #[arg(long, help = "Script replacement for `cargo build` command")]
     script: Option<PathBuf>,
 
-    #[clap(long, help = "Do not install cargo [default: install cargo]")]
+    #[arg(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 }
 
 pub type GitDate = Date<Utc>;
 
-fn validate_dir(s: &str) -> anyhow::Result<()> {
+fn validate_dir(s: &str) -> anyhow::Result<PathBuf> {
     let path: PathBuf = s.parse()?;
     if path.is_dir() {
-        Ok(())
+        Ok(path)
     } else {
         bail!(
             "{} is not an existing directory",
@@ -272,19 +267,18 @@ impl Config {
 
         let input = (self.args.regress, status.success());
         let result = match input {
-            (RegressOn::ErrorStatus, true) | (RegressOn::SuccessStatus, false) => {
-                TestOutcome::Baseline
+            (RegressOn::Error, true) | (RegressOn::Success, false) => TestOutcome::Baseline,
+            (RegressOn::Error, false) | (RegressOn::Success | RegressOn::NonError, true) => {
+                TestOutcome::Regressed
             }
-            (RegressOn::ErrorStatus, false)
-            | (RegressOn::SuccessStatus | RegressOn::NonCleanError, true) => TestOutcome::Regressed,
-            (RegressOn::IceAlone, _) | (RegressOn::NonCleanError, false) => {
+            (RegressOn::Ice, _) | (RegressOn::NonError, false) => {
                 if saw_ice {
                     TestOutcome::Regressed
                 } else {
                     TestOutcome::Baseline
                 }
             }
-            (RegressOn::NotIce, _) => {
+            (RegressOn::NonIce, _) => {
                 if saw_ice {
                     TestOutcome::Baseline
                 } else {
@@ -300,7 +294,7 @@ impl Config {
     }
 }
 
-#[derive(ArgEnum, Clone, Debug)]
+#[derive(Clone, Debug, ValueEnum)]
 enum Access {
     Checkout,
     Github,
@@ -315,87 +309,52 @@ impl Access {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
 /// Customize what is treated as regression.
 enum RegressOn {
-    /// `ErrorStatus`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process reports a non-success status. This corresponds to
-    /// when `rustc` has an internal compiler error (ICE) or when it detects an
-    /// error in the input program.
-    ///
+    /// Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process reports a non-success status. This corresponds to when `rustc`
+    /// has an internal compiler error (ICE) or when it detects an error in the
+    /// input program.
     /// This covers the most common use case for `cargo-bisect-rustc` and is
     /// thus the default setting.
-    ///
-    /// You explicitly opt into this seting via `--regress=error`.
-    ErrorStatus,
+    Error,
 
-    /// `SuccessStatus`: Marks test outcome as `Regressed` if and only
-    /// if the `rustc` process reports a success status. This corresponds to
-    /// when `rustc` believes it has successfully compiled the program. This
-    /// covers the use case for when you want to bisect to see when a bug was
-    /// fixed.
-    ///
-    /// You explicitly opt into this seting via `--regress=success`.
-    SuccessStatus,
+    /// Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process reports a success status. This corresponds to when `rustc`
+    /// believes it has successfully compiled the program. This covers the use
+    /// case for when you want to bisect to see when a bug was fixed.
+    Success,
 
-    /// `IceAlone`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process issues a diagnostic indicating that an internal
+    /// `Ice`: Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process issues a diagnostic indicating that an internal compiler error
+    /// (ICE) occurred. This covers the use case for when you want to bisect to
+    /// see when an ICE was introduced pon a codebase that is meant to produce
+    /// a clean error.
+    Ice,
+
+    /// `NonIce`: Marks test outcome as `Regressed` if and only if the `rustc`
+    /// process does not issue a diagnostic indicating that an internal
     /// compiler error (ICE) occurred. This covers the use case for when you
-    /// want to bisect to see when an ICE was introduced pon a codebase that is
-    /// meant to produce a clean error.
-    ///
-    /// You explicitly opt into this seting via `--regress=ice`.
-    IceAlone,
+    /// want to bisect to see when an ICE was fixed.
+    NonIce,
 
-    /// `NotIce`: Marks test outcome as `Regressed` if and only if
-    /// the `rustc` process does not issue a diagnostic indicating that an
-    /// internal compiler error (ICE) occurred. This covers the use case for
-    /// when you want to bisect to see when an ICE was fixed.
-    ///
-    /// You explicitly opt into this setting via `--regress=non-ice`
-    NotIce,
-
-    /// `NonCleanError`: Marks test outcome as `Baseline` if and only
-    /// if the `rustc` process reports error status and does not issue any
-    /// diagnostic indicating that an internal compiler error (ICE) occurred.
-    /// This is the use case if the regression is a case where an ill-formed
-    /// program has stopped being properly rejected by the compiler.
-    ///
-    /// (The main difference between this case and `SuccessStatus` is
-    /// the handling of ICE: `SuccessStatus` assumes that ICE should be
-    /// considered baseline; `NonCleanError` assumes ICE should be
-    /// considered a sign of a regression.)
-    ///
-    /// You explicitly opt into this seting via `--regress=non-error`.
-    NonCleanError,
-}
-
-impl ArgEnum for RegressOn {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[
-            Self::ErrorStatus,
-            Self::SuccessStatus,
-            Self::IceAlone,
-            Self::NotIce,
-            Self::NonCleanError,
-        ]
-    }
-    fn to_possible_value<'a>(&self) -> Option<PossibleValue<'a>> {
-        Some(PossibleValue::new(match self {
-            Self::ErrorStatus => "error",
-            Self::NonCleanError => "non-error",
-            Self::IceAlone => "ice",
-            Self::NotIce => "non-ice",
-            Self::SuccessStatus => "success",
-        }))
-    }
+    /// `NonError`: Marks test outcome as `Baseline` if and only if the `rustc`
+    /// process reports error status and does not issue any diagnostic
+    /// indicating that an internal compiler error (ICE) occurred. This is the
+    /// use case if the regression is a case where an ill-formed program has
+    /// stopped being properly rejected by the compiler.
+    /// (The main difference between this case and `Success` is the handling of
+    /// ICE: `Success` assumes that ICE should be considered baseline;
+    /// `NonError` assumes ICE should be considered a sign of a regression.)
+    NonError,
 }
 
 impl RegressOn {
     fn must_process_stderr(self) -> bool {
         match self {
-            RegressOn::ErrorStatus | RegressOn::SuccessStatus => false,
-            RegressOn::NonCleanError | RegressOn::IceAlone | RegressOn::NotIce => true,
+            RegressOn::Error | RegressOn::Success => false,
+            RegressOn::NonError | RegressOn::Ice | RegressOn::NonIce => true,
         }
     }
 }
