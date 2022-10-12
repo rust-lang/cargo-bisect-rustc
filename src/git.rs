@@ -7,8 +7,8 @@ use std::env;
 use std::ops::Deref;
 use std::path::Path;
 
-use chrono::{TimeZone, Utc};
 use anyhow::{bail, Context};
+use chrono::{TimeZone, Utc};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;

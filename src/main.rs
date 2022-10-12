@@ -13,10 +13,10 @@ use std::path::PathBuf;
 use std::process;
 use std::str::FromStr;
 
+use anyhow::{bail, Context};
 use chrono::{Date, Duration, NaiveDate, Utc};
 use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
-use anyhow::{bail, Context};
 use log::debug;
 use reqwest::blocking::Client;
 
@@ -29,8 +29,8 @@ mod toolchains;
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
-    DownloadParams, InstallError, NIGHTLY_SERVER, TestOutcome, Toolchain, ToolchainSpec,
-    YYYY_MM_DD, download_progress, parse_to_utc_date,
+    download_progress, parse_to_utc_date, DownloadParams, InstallError, TestOutcome, Toolchain,
+    ToolchainSpec, NIGHTLY_SERVER, YYYY_MM_DD,
 };
 
 #[derive(Debug, Clone, PartialEq)]
