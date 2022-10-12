@@ -1,9 +1,9 @@
 use anyhow::{bail, Context};
+use reqwest::header::{HeaderMap, HeaderValue, InvalidHeaderValue, AUTHORIZATION, USER_AGENT};
 use reqwest::{self, blocking::Client, blocking::Response};
-use reqwest::header::{HeaderMap, InvalidHeaderValue, HeaderValue, USER_AGENT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 
-use crate::{Commit, GitDate, parse_to_utc_date};
+use crate::{parse_to_utc_date, Commit, GitDate};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GithubCommitComparison {
