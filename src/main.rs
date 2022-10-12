@@ -326,27 +326,27 @@ enum RegressOn {
     /// case for when you want to bisect to see when a bug was fixed.
     Success,
 
-    /// `Ice`: Marks test outcome as `Regressed` if and only if the `rustc`
+    /// Marks test outcome as `Regressed` if and only if the `rustc`
     /// process issues a diagnostic indicating that an internal compiler error
     /// (ICE) occurred. This covers the use case for when you want to bisect to
     /// see when an ICE was introduced pon a codebase that is meant to produce
     /// a clean error.
     Ice,
 
-    /// `NonIce`: Marks test outcome as `Regressed` if and only if the `rustc`
+    /// Marks test outcome as `Regressed` if and only if the `rustc`
     /// process does not issue a diagnostic indicating that an internal
     /// compiler error (ICE) occurred. This covers the use case for when you
     /// want to bisect to see when an ICE was fixed.
     NonIce,
 
-    /// `NonError`: Marks test outcome as `Baseline` if and only if the `rustc`
+    /// Marks test outcome as `Baseline` if and only if the `rustc`
     /// process reports error status and does not issue any diagnostic
     /// indicating that an internal compiler error (ICE) occurred. This is the
     /// use case if the regression is a case where an ill-formed program has
     /// stopped being properly rejected by the compiler.
-    /// (The main difference between this case and `Success` is the handling of
-    /// ICE: `Success` assumes that ICE should be considered baseline;
-    /// `NonError` assumes ICE should be considered a sign of a regression.)
+    /// (The main difference between this case and `success` is the handling of
+    /// ICE: `success` assumes that ICE should be considered baseline;
+    /// `non-error` assumes ICE should be considered a sign of a regression.)
     NonError,
 }
 
