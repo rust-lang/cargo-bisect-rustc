@@ -108,7 +108,11 @@ fn find_origin_remote(repo: &Repository) -> anyhow::Result<String> {
     repo.remotes()?
         .iter()
         .filter_map(|name| name.and_then(|name| repo.find_remote(name).ok()))
-        .find(|remote| remote.url().map_or(false, |url| url.contains("rust-lang/rust")))
+        .find(|remote| {
+            remote
+                .url()
+                .map_or(false, |url| url.contains("rust-lang/rust"))
+        })
         .and_then(|remote| remote.name().map(std::string::ToString::to_string))
         .with_context(|| {
             format!(
