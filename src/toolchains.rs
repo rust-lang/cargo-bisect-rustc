@@ -243,7 +243,7 @@ impl Toolchain {
             if !path.is_absolute() && !path.starts_with("./") && !path.starts_with(".\\") {
                 if let Ok(mut dir) = std::env::current_dir() {
                     dir.push(path);
-                    if dir.exists() {
+                    if dir.is_file() {
                         script = Some(dir)
                     }
                 }
