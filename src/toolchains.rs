@@ -238,17 +238,11 @@ impl Toolchain {
                     .join(&format!("target-{}", self.rustup_name())),
             );
         }
-        let mut script = cfg.args.script.clone();
-        if let Some(path) = &script {
-            if !path.is_absolute() && !path.starts_with("./") && !path.starts_with(".\\") {
-                if let Ok(mut dir) = std::env::current_dir() {
-                    dir.push(path);
-                    if dir.is_file() {
-                        script = Some(dir)
-                    }
-                }
-            }
-        }
+        let script = cfg
+            .args
+            .script
+            .as_ref()
+            .map(|script| std::env::current_dir().unwrap().join(script));
 
         let mut cmd = match (script, cfg.args.timeout) {
             (Some(script), None) => {
