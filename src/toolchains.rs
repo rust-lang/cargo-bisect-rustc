@@ -238,8 +238,13 @@ impl Toolchain {
                     .join(&format!("target-{}", self.rustup_name())),
             );
         }
+        let script = cfg
+            .args
+            .script
+            .as_ref()
+            .map(|script| std::env::current_dir().unwrap().join(script));
 
-        let mut cmd = match (cfg.args.script.as_ref(), cfg.args.timeout) {
+        let mut cmd = match (script, cfg.args.timeout) {
             (Some(script), None) => {
                 let mut cmd = Command::new(script);
                 cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
