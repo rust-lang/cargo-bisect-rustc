@@ -1165,7 +1165,7 @@ fn main() {
             Ok(ExitError(code)) => process::exit(code),
             Err(err) => {
                 let error_str = "ERROR:".red().bold();
-                eprintln!("{} {}", error_str, err);
+                eprintln!("{} {:?}", error_str, err);
                 process::exit(1);
             }
         }
