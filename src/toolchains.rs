@@ -238,11 +238,13 @@ impl Toolchain {
                     .join(&format!("target-{}", self.rustup_name())),
             );
         }
-        let script = cfg
-            .args
-            .script
-            .as_ref()
-            .map(|script| std::env::current_dir().unwrap().join(script));
+        let script = cfg.args.script.as_ref().map(|script| {
+            if script.exists() {
+                std::env::current_dir().unwrap().join(script)
+            } else {
+                script.to_owned()
+            }
+        });
 
         let mut cmd = match (script, cfg.args.timeout) {
             (Some(script), None) => {
