@@ -21,7 +21,7 @@ jobs:
         toolchain: ${{ matrix.rust }}
         profile: minimal
         override: true
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
     - name: Build
       run: cargo test --no-run
     - name: Test
