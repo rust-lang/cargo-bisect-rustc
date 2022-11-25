@@ -859,10 +859,14 @@ fn get_start_date(cfg: &Config) -> Date<Utc> {
 fn get_end_date(cfg: &Config) -> Date<Utc> {
     if let Some(Bound::Date(date)) = cfg.args.end {
         date
-    } else if let Some(date) = Toolchain::default_nightly() {
-        date
     } else {
-        Utc::today()
+        match (Toolchain::default_nightly(), &cfg.args.start) {
+            // Neither --start or --end specified, default to the current
+            // nightly (if available).
+            (Some(date), None) => date,
+            // --start only, assume --end=today
+            _ => Utc::today(),
+        }
     }
 }
 
