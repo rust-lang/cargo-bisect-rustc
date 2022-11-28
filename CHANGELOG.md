@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.6.5
+
+### Changed
+
+- Stack overflow on any thread (not just 'rustc') is treated as an ICE.
+  [#194](https://github.com/rust-lang/cargo-bisect-rustc/pull/194)
+- Clap (the CLI argument processor) has been updated, which may result in some minor CLI output and parsing changes.
+  [#225](https://github.com/rust-lang/cargo-bisect-rustc/pull/225)
+  [#229](https://github.com/rust-lang/cargo-bisect-rustc/pull/229)
+- The check for the Rust upstream remote in the git repository has been loosened to only scan for `rust-lang/rust` so that non-https remotes like `git@github.com:rust-lang/rust.git` will work.
+  [#235](https://github.com/rust-lang/cargo-bisect-rustc/pull/235)
+- The `--script` option will now look for a script in the current directory (so that it no longer requires the `./` prefix).
+  [#236](https://github.com/rust-lang/cargo-bisect-rustc/pull/236)
+  [#238](https://github.com/rust-lang/cargo-bisect-rustc/pull/238)
+- Specifying `--start` without `--end` will default the end to be the current date. Previously it would use the date of whatever nightly is currently installed.
+  [#240](https://github.com/rust-lang/cargo-bisect-rustc/pull/240)
+
+### Fixed
+
+- Fixed using either `cargo bisect-rustc` (with a space) or `cargo-bisect-rustc` (with a dash).
+  [#187](https://github.com/rust-lang/cargo-bisect-rustc/pull/187)
+- Show the CLI help page if no arguments are passed.
+  [#206](https://github.com/rust-lang/cargo-bisect-rustc/pull/206)
+- The CLI argument validator for `--script` has been removed to allow running scripts on PATH. This also removes the `--host` validator which was not needed.
+  [#207](https://github.com/rust-lang/cargo-bisect-rustc/pull/207)
+- Fixed showing the full chain of errors instead of just the top-level one.
+  [#237](https://github.com/rust-lang/cargo-bisect-rustc/pull/237)
+
 ## v0.6.4
 
 ### Added
