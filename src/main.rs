@@ -471,9 +471,9 @@ fn fixup_bounds(
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()> {
     // current UTC date
     let current = Utc::today();
-    match start.as_ref().zip(end.as_ref()) {
+    match (start, end) {
         // start date is after end date
-        Some((Bound::Date(start), Bound::Date(end))) if end < start => {
+        (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
             bail!(
                 "end should be after start, got start: {} and end {}",
                 start,
@@ -481,7 +481,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()
             );
         }
         // start date is after current date
-        Some((Bound::Date(start), _)) if start > &current => {
+        (Some(Bound::Date(start)), _) if start > &current => {
             bail!(
                 "start date should be on or before current date, got start date request: {} and current date is {}",
                 start,
@@ -489,7 +489,7 @@ fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()
             );
         }
         // end date is after current date
-        Some((_, Bound::Date(end))) if end > &current => {
+        (_, Some(Bound::Date(end))) if end > &current => {
             bail!(
                 "end date should be on or before current date, got start date request: {} and current date is {}",
                 end,
@@ -1203,10 +1203,22 @@ mod tests {
     }
 
     #[test]
+    fn test_check_bounds_invalid_start_after_current_without_end() {
+        let start = chrono::Utc::today().succ();
+        assert!(check_bounds(&Some(Bound::Date(start)), &None).is_err());
+    }
+
+    #[test]
     fn test_check_bounds_invalid_end_after_current() {
         let start = chrono::Utc::today();
         let end = chrono::Utc::today().succ();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
+    }
+
+    #[test]
+    fn test_check_bounds_invalid_end_after_current_without_start() {
+        let end = chrono::Utc::today().succ();
+        assert!(check_bounds(&None, &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
