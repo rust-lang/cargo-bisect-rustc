@@ -16,11 +16,9 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-        profile: minimal
-        override: true
     - uses: Swatinem/rust-cache@v2
     - name: Build
       run: cargo test --no-run
@@ -32,3 +30,18 @@ jobs:
       run: |
         cargo run -- bisect-rustc --help | grep "Examples:"
         cargo run -- --help | grep "Commands:"
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Run rustfmt check
+        run: |
+          cargo fmt --version
+          cargo fmt --check || (echo "Please reformat your code with 'cargo fmt' (version $(cargo fmt --version))"; false)
