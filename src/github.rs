@@ -26,6 +26,15 @@ struct GithubAuthor {
     email: String,
     name: String,
 }
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct GithubCommentAuthor {
+    pub(crate) login: String,
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct GithubComment {
+    pub(crate) user: GithubCommentAuthor,
+    pub(crate) body: String,
+}
 
 impl GithubCommitElem {
     fn date(&self) -> anyhow::Result<GitDate> {
@@ -76,6 +85,25 @@ pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
         .json()
         .with_context(|| "failed to decode GitHub JSON response")?;
     elem.merge_base_commit.git_commit()
+}
+
+pub(crate) fn get_pr_comments(pr: &str) -> anyhow::Result<Vec<GithubComment>> {
+    let url = format!("https://api.github.com/repos/rust-lang/rust/issues/{pr}/comments");
+    let client = Client::builder().default_headers(headers()?).build()?;
+    let response: Response = client.get(&url).send()?;
+    let status = response.status();
+    if !status.is_success() {
+        bail!(
+            "error: url <{}> response {}: {}",
+            url,
+            status,
+            response.text().unwrap_or_else(|_| format!("<empty>"))
+        );
+    }
+    let comments: Vec<GithubComment> = response
+        .json()
+        .with_context(|| "failed to decode GitHub JSON response")?;
+    Ok(comments)
 }
 
 #[derive(Copy, Clone, Debug)]
