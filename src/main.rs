@@ -17,6 +17,7 @@ use anyhow::{bail, Context};
 use chrono::{Date, Duration, NaiveDate, Utc};
 use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
+use github::get_pr_comments;
 use log::debug;
 use reqwest::blocking::Client;
 
@@ -26,6 +27,7 @@ mod least_satisfying;
 mod repo_access;
 mod toolchains;
 
+use crate::github::get_commit;
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
@@ -558,11 +560,30 @@ impl Config {
         Ok(())
     }
 
+    fn do_perf_search(&self, result: &BisectionResult) {
+        let toolchain = &result.searched[result.found];
+        match self.search_perf_builds(toolchain) {
+            Ok(result) => {
+                let url = format!(
+                    "https://github.com/rust-lang-ci/rust/commit/{}",
+                    result.searched[result.found]
+                )
+                .red()
+                .bold();
+                eprintln!("Regression in {url}");
+            }
+            Err(e) => {
+                eprintln!("ERROR: {e}");
+            }
+        }
+    }
+
     // bisection entry point
     fn bisect(&self) -> anyhow::Result<()> {
         if self.is_commit {
             let bisection_result = self.bisect_ci()?;
             self.print_results(&bisection_result);
+            self.do_perf_search(&bisection_result);
         } else {
             let nightly_bisection_result = self.bisect_nightlies()?;
             self.print_results(&nightly_bisection_result);
@@ -583,6 +604,7 @@ impl Config {
                 let ci_bisection_result = self.bisect_ci_via(&working_commit, &bad_commit)?;
 
                 self.print_results(&ci_bisection_result);
+                self.do_perf_search(&ci_bisection_result);
                 print_final_report(self, &nightly_bisection_result, &ci_bisection_result);
             }
         }
@@ -1147,6 +1169,75 @@ impl Config {
         }
 
         let found = self.bisect_to_regression(&toolchains, &dl_spec);
+
+        Ok(BisectionResult {
+            searched: toolchains,
+            found,
+            dl_spec,
+        })
+    }
+
+    fn search_perf_builds(&self, toolchain: &Toolchain) -> anyhow::Result<BisectionResult> {
+        eprintln!("Attempting to search unrolled perf builds");
+        let Toolchain {spec: ToolchainSpec::Ci { commit, .. }, ..} = toolchain else {
+            bail!("not a ci commit");
+        };
+        let summary = get_commit(commit)?.summary;
+        if !summary.starts_with("Auto merge of #") && !summary.contains("Rollup of") {
+            bail!("not a rollup pr");
+        }
+        let pr = summary.split(' ').nth(3).unwrap();
+        // remove '#'
+        let pr = pr.chars().skip(1).collect::<String>();
+        let comments = get_pr_comments(&pr)?;
+        let perf_comment = comments
+            .iter()
+            .filter(|c| c.user.login == "rust-timer")
+            .find(|c| c.body.contains("Perf builds for each rolled up PR"))
+            .context("couldn't find perf build comment")?;
+        let builds = perf_comment
+            .body
+            .lines()
+            // lines of table with PR builds
+            .filter(|l| l.starts_with("|#"))
+            // get the commit link
+            .filter_map(|l| l.split('|').nth(2))
+            // get the commit sha
+            .map(|l| l.split_once('[').unwrap().1.rsplit_once(']').unwrap().0)
+            .collect::<Vec<_>>();
+        let short_sha = builds
+            .iter()
+            .map(|sha| sha.chars().take(8).collect())
+            .collect::<Vec<String>>();
+        eprintln!("Found commits {short_sha:?}");
+        self.linear_in_commits(&builds)
+    }
+
+    fn linear_in_commits(&self, commits: &[&str]) -> anyhow::Result<BisectionResult> {
+        let dl_spec = DownloadParams::for_ci(self);
+
+        let toolchains = commits
+            .into_iter()
+            .map(|commit| {
+                let mut t = Toolchain {
+                    spec: ToolchainSpec::Ci {
+                        commit: commit.to_string(),
+                        alt: self.args.alt,
+                    },
+                    host: self.args.host.clone(),
+                    std_targets: vec![self.args.host.clone(), self.target.clone()],
+                };
+                t.std_targets.sort();
+                t.std_targets.dedup();
+                t
+            })
+            .collect::<Vec<_>>();
+
+        let Some(found) = toolchains.iter().position(|t| {
+            self.install_and_test(t, &dl_spec).unwrap_or(Satisfies::Unknown) == Satisfies::Yes
+        }) else {
+            bail!("none of the toolchains satisfied the predicate");
+        };
 
         Ok(BisectionResult {
             searched: toolchains,
