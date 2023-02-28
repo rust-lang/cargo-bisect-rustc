@@ -17,6 +17,10 @@ Options:
   -h, --help                    Print help information (use `--help` for more detail)
 ...
       --install <INSTALL>       Install the given artifact
+      --no-verify-ci            Do not verify that the start and end commits of the range are
+                                correct
+      --no-verify-nightly       Do not verify that the start and end of the nightly range are
+                                correct
       --preserve                Preserve the downloaded artifacts
       --preserve-target         Preserve the target directory used for builds
       --prompt                  Manually evaluate for regression with prompts
