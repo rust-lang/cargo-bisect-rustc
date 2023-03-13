@@ -72,7 +72,7 @@ fn get_repo() -> anyhow::Result<RustcRepo> {
         eprintln!("refreshing repository at {:?}", path);
         // This uses the CLI because libgit2 is quite slow to fetch a large repository.
         let status = std::process::Command::new("git")
-            .arg("fetch")
+            .args(&["fetch", "--tags"])
             .arg(&origin_remote)
             .current_dir(path)
             .status()
