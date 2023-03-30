@@ -179,6 +179,18 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
 
     #[arg(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
+
+    #[arg(
+        long,
+        help = "Do not verify that the start and end of the nightly range are correct"
+    )]
+    no_verify_nightly: bool,
+
+    #[arg(
+        long,
+        help = "Do not verify that the start and end commits of the range are correct"
+    )]
+    no_verify_ci: bool,
 }
 
 pub type GitDate = Date<Utc>;
@@ -954,39 +966,45 @@ impl Config {
                 );
             }
 
-            eprintln!("checking the start range to find a passing nightly");
-            match self.install_and_test(&t, &dl_spec) {
-                Ok(r) => {
-                    // If Satisfies::No, then the regression was not identified in this nightly.
-                    // Break out of the loop and use this as the start date for the
-                    // bisection range
-                    if r == Satisfies::No {
-                        first_success = Some(nightly_date);
-                        break;
-                    } else if has_start {
-                        // If this date was explicitly defined on the command line &
-                        // has regression, then this is an error in the test definition.
-                        // The user must re-define the start date and try again
-                        bail!(
-                            "the start of the range ({}) must not reproduce the regression",
+            if has_start && self.args.no_verify_nightly {
+                eprintln!("skipping checking the start of the range");
+                first_success = Some(nightly_date);
+                break;
+            } else {
+                eprintln!("checking the start range to find a passing nightly");
+                match self.install_and_test(&t, &dl_spec) {
+                    Ok(r) => {
+                        // If Satisfies::No, then the regression was not identified in this nightly.
+                        // Break out of the loop and use this as the start date for the
+                        // bisection range
+                        if r == Satisfies::No {
+                            first_success = Some(nightly_date);
+                            break;
+                        } else if has_start {
+                            // If this date was explicitly defined on the command line &
+                            // has regression, then this is an error in the test definition.
+                            // The user must re-define the start date and try again
+                            bail!(
+                                "the start of the range ({}) must not reproduce the regression",
+                                t
+                            );
+                        }
+                        last_failure = nightly_date;
+                        nightly_date = nightly_iter.next().unwrap();
+                    }
+                    Err(InstallError::NotFound { .. }) => {
+                        // go back just one day, presumably missing a nightly
+                        nightly_date = nightly_date.pred();
+                        eprintln!(
+                            "*** unable to install {}. roll back one day and try again...",
                             t
                         );
+                        if has_start {
+                            bail!("could not find {}", t);
+                        }
                     }
-                    last_failure = nightly_date;
-                    nightly_date = nightly_iter.next().unwrap();
+                    Err(error) => return Err(error.into()),
                 }
-                Err(InstallError::NotFound { .. }) => {
-                    // go back just one day, presumably missing a nightly
-                    nightly_date = nightly_date.pred();
-                    eprintln!(
-                        "*** unable to install {}. roll back one day and try again...",
-                        t
-                    );
-                    if has_start {
-                        bail!("could not find {}", t);
-                    }
-                }
-                Err(error) => return Err(error.into()),
             }
         }
 
@@ -1001,14 +1019,18 @@ impl Config {
         t_end.std_targets.sort();
         t_end.std_targets.dedup();
 
-        eprintln!("checking the end range to verify it does not pass");
-        let result_nightly = self.install_and_test(&t_end, &dl_spec)?;
-        // The regression was not identified in this nightly.
-        if result_nightly == Satisfies::No {
-            bail!(
-                "the end of the range ({}) does not reproduce the regression",
-                t_end
-            );
+        if self.args.no_verify_nightly {
+            eprintln!("skipping checking the end of the range");
+        } else {
+            eprintln!("checking the end range to verify it does not pass");
+            let result_nightly = self.install_and_test(&t_end, &dl_spec)?;
+            // The regression was not identified in this nightly.
+            if result_nightly == Satisfies::No {
+                bail!(
+                    "the end of the range ({}) does not reproduce the regression",
+                    t_end
+                );
+            }
         }
 
         let toolchains = toolchains_between(
@@ -1147,25 +1169,29 @@ impl Config {
             .collect::<Vec<_>>();
 
         if !toolchains.is_empty() {
-            // validate commit at start of range
-            eprintln!("checking the start range to verify it passes");
-            let start_range_result = self.install_and_test(&toolchains[0], &dl_spec)?;
-            if start_range_result == Satisfies::Yes {
-                bail!(
-                    "the commit at the start of the range ({}) includes the regression",
-                    &toolchains[0]
-                );
-            }
+            if self.args.no_verify_ci {
+                eprintln!("skipping verifying CI range")
+            } else {
+                // validate commit at start of range
+                eprintln!("checking the start range to verify it passes");
+                let start_range_result = self.install_and_test(&toolchains[0], &dl_spec)?;
+                if start_range_result == Satisfies::Yes {
+                    bail!(
+                        "the commit at the start of the range ({}) includes the regression",
+                        &toolchains[0]
+                    );
+                }
 
-            // validate commit at end of range
-            eprintln!("checking the end range to verify it does not pass");
-            let end_range_result =
-                self.install_and_test(&toolchains[toolchains.len() - 1], &dl_spec)?;
-            if end_range_result == Satisfies::No {
-                bail!(
-                    "the commit at the end of the range ({}) does not reproduce the regression",
-                    &toolchains[toolchains.len() - 1]
-                );
+                // validate commit at end of range
+                eprintln!("checking the end range to verify it does not pass");
+                let end_range_result =
+                    self.install_and_test(&toolchains[toolchains.len() - 1], &dl_spec)?;
+                if end_range_result == Satisfies::No {
+                    bail!(
+                        "the commit at the end of the range ({}) does not reproduce the regression",
+                        &toolchains[toolchains.len() - 1]
+                    );
+                }
             }
         }
 

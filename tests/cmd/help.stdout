@@ -40,6 +40,12 @@ Options:
       --install <INSTALL>
           Install the given artifact
 
+      --no-verify-ci
+          Do not verify that the start and end commits of the range are correct
+
+      --no-verify-nightly
+          Do not verify that the start and end of the nightly range are correct
+
       --preserve
           Preserve the downloaded artifacts
 
