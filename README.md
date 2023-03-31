@@ -6,7 +6,7 @@
 
 This tool bisects either Rust nightlies or CI artifacts.
 
-[**Tutorial**](TUTORIAL.md)
+[**Documentation**](https://rust-lang.github.io/cargo-bisect-rustc/)
 
 ## License
 

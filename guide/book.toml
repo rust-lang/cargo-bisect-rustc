@@ -1,0 +1,10 @@
+[book]
+language = "en"
+multilingual = false
+src = "src"
+title = "cargo-bisect-rustc"
+
+[output.html]
+curly-quotes = true
+git-repository-url = "https://github.com/rust-lang/cargo-bisect-rustc/tree/master/guide/src"
+edit-url-template = "https://github.com/rust-lang/cargo-bisect-rustc/edit/master/guide/{path}"
