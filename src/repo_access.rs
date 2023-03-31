@@ -59,7 +59,8 @@ impl RustRepositoryAccessor for AccessViaGithub {
         // this bound on the github search.
         let since_date = self
             .bound_to_date(Bound::Commit(start_sha.to_string()))?
-            .pred();
+            .pred_opt()
+            .unwrap();
 
         eprintln!(
             "fetching (via remote github) commits from max({}, {}) to {}",

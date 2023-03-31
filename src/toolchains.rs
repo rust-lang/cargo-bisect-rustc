@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 
-use chrono::{Date, NaiveDate, Utc};
+use chrono::NaiveDate;
 use colored::Colorize;
 use dialoguer::Select;
 use flate2::read::GzDecoder;
@@ -17,9 +17,7 @@ use tar::Archive;
 use tee::TeeReader;
 use xz2::read::XzDecoder;
 
-use crate::Config;
-
-pub type GitDate = Date<Utc>;
+use crate::{Config, GitDate};
 
 pub const YYYY_MM_DD: &str = "%Y-%m-%d";
 
@@ -88,7 +86,11 @@ impl Toolchain {
             .ok()
             .filter(|v| v.channel == Channel::Nightly)
             // rustc commit date is off-by-one, see #112
-            .and_then(|v| parse_to_utc_date(&v.commit_date?).ok().map(|d| d.succ()))
+            .and_then(|v| {
+                parse_to_naive_date(&v.commit_date?)
+                    .ok()
+                    .map(|d| d.succ_opt().unwrap())
+            })
     }
 
     pub(crate) fn is_current_nightly(&self) -> bool {
@@ -362,8 +364,8 @@ impl Toolchain {
     }
 }
 
-pub fn parse_to_utc_date(s: &str) -> chrono::ParseResult<GitDate> {
-    NaiveDate::parse_from_str(s, YYYY_MM_DD).map(|date| Date::from_utc(date, Utc))
+pub fn parse_to_naive_date(s: &str) -> chrono::ParseResult<GitDate> {
+    NaiveDate::parse_from_str(s, YYYY_MM_DD)
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

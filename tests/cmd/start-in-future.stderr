@@ -1,1 +1,1 @@
-ERROR: start date should be on or before current date, got start date request: 9999-01-01UTC and current date is [..]UTC
+ERROR: start date should be on or before current date, got start date request: 9999-01-01 and current date is [..]
