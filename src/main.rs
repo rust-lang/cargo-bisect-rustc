@@ -14,7 +14,7 @@ use std::process;
 use std::str::FromStr;
 
 use anyhow::{bail, Context};
-use chrono::{Date, Duration, NaiveDate, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
 use github::get_pr_comments;
@@ -31,7 +31,7 @@ use crate::github::get_commit;
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
-    download_progress, parse_to_utc_date, DownloadParams, InstallError, TestOutcome, Toolchain,
+    download_progress, parse_to_naive_date, DownloadParams, InstallError, TestOutcome, Toolchain,
     ToolchainSpec, NIGHTLY_SERVER, YYYY_MM_DD,
 };
 
@@ -181,7 +181,11 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     without_cargo: bool,
 }
 
-pub type GitDate = Date<Utc>;
+pub type GitDate = NaiveDate;
+
+pub fn today() -> NaiveDate {
+    Utc::now().date_naive()
+}
 
 fn validate_dir(s: &str) -> anyhow::Result<PathBuf> {
     let path: PathBuf = s.parse()?;
@@ -204,7 +208,7 @@ enum Bound {
 impl FromStr for Bound {
     type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        parse_to_utc_date(s)
+        parse_to_naive_date(s)
             .map(Self::Date)
             .or_else(|_| Ok(Self::Commit(s.to_string())))
     }
@@ -473,7 +477,7 @@ fn fixup_bounds(
 
 fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()> {
     // current UTC date
-    let current = Utc::today();
+    let current = today();
     match (start, end) {
         // start date is after end date
         (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
@@ -592,7 +596,7 @@ impl Config {
                 &nightly_bisection_result.searched[nightly_bisection_result.found];
 
             if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
-                let previous_date = date.pred();
+                let previous_date = date.pred_opt().unwrap();
 
                 let working_commit = Bound::Date(previous_date).sha()?;
                 let bad_commit = Bound::Date(date).sha()?;
@@ -871,7 +875,7 @@ impl Config {
     }
 }
 
-fn get_start_date(cfg: &Config) -> Date<Utc> {
+fn get_start_date(cfg: &Config) -> NaiveDate {
     if let Some(Bound::Date(date)) = cfg.args.start {
         date
     } else {
@@ -879,7 +883,7 @@ fn get_start_date(cfg: &Config) -> Date<Utc> {
     }
 }
 
-fn get_end_date(cfg: &Config) -> Date<Utc> {
+fn get_end_date(cfg: &Config) -> NaiveDate {
     if let Some(Bound::Date(date)) = cfg.args.end {
         date
     } else {
@@ -888,13 +892,13 @@ fn get_end_date(cfg: &Config) -> Date<Utc> {
             // nightly (if available).
             (Some(date), None) => date,
             // --start only, assume --end=today
-            _ => Utc::today(),
+            _ => today(),
         }
     }
 }
 
-fn date_is_future(test_date: Date<Utc>) -> bool {
-    test_date > Utc::today()
+fn date_is_future(test_date: NaiveDate) -> bool {
+    test_date > today()
 }
 
 impl Config {
@@ -907,7 +911,7 @@ impl Config {
         let dl_spec = DownloadParams::for_nightly(self);
 
         // before this date we didn't have -std packages
-        let end_at = Date::from_utc(NaiveDate::from_ymd(2015, 10, 20), Utc);
+        let end_at = NaiveDate::from_ymd_opt(2015, 10, 20).unwrap();
         let mut first_success = None;
 
         let mut nightly_date = get_start_date(self);
@@ -977,7 +981,7 @@ impl Config {
                 }
                 Err(InstallError::NotFound { .. }) => {
                     // go back just one day, presumably missing a nightly
-                    nightly_date = nightly_date.pred();
+                    nightly_date = nightly_date.pred_opt().unwrap();
                     eprintln!(
                         "*** unable to install {}. roll back one day and try again...",
                         t
@@ -1044,7 +1048,7 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
                     std_targets: std_targets.clone(),
                 };
                 toolchains.push(t);
-                date = date.succ();
+                date = date.succ_opt().unwrap();
             }
             toolchains
         }
@@ -1110,7 +1114,7 @@ impl Config {
         mut commits: Vec<Commit>,
     ) -> anyhow::Result<BisectionResult> {
         let dl_spec = DownloadParams::for_ci(self);
-        commits.retain(|c| Utc::today() - c.date < Duration::days(167));
+        commits.retain(|c| today() - c.date < Duration::days(167));
 
         if commits.is_empty() {
             bail!(
@@ -1275,47 +1279,47 @@ mod tests {
     // Start and end date validations
     #[test]
     fn test_check_bounds_valid_bounds() {
-        let date1 = chrono::Utc::today().pred();
-        let date2 = chrono::Utc::today().pred();
+        let date1 = today().pred_opt().unwrap();
+        let date2 = today().pred_opt().unwrap();
         assert!(check_bounds(&Some(Bound::Date(date1)), &Some(Bound::Date(date2))).is_ok());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_end() {
-        let start = chrono::Utc::today();
-        let end = chrono::Utc::today().pred();
+        let start = today();
+        let end = today().pred_opt().unwrap();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_current() {
-        let start = chrono::Utc::today().succ();
-        let end = chrono::Utc::today();
+        let start = today().succ_opt().unwrap();
+        let end = today();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_start_after_current_without_end() {
-        let start = chrono::Utc::today().succ();
+        let start = today().succ_opt().unwrap();
         assert!(check_bounds(&Some(Bound::Date(start)), &None).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_end_after_current() {
-        let start = chrono::Utc::today();
-        let end = chrono::Utc::today().succ();
+        let start = today();
+        let end = today().succ_opt().unwrap();
         assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_check_bounds_invalid_end_after_current_without_start() {
-        let end = chrono::Utc::today().succ();
+        let end = today().succ_opt().unwrap();
         assert!(check_bounds(&None, &Some(Bound::Date(end))).is_err());
     }
 
     #[test]
     fn test_nightly_finder_iterator() {
-        let start_date = Date::from_utc(NaiveDate::from_ymd(2019, 01, 01), Utc);
+        let start_date = NaiveDate::from_ymd_opt(2019, 01, 01).unwrap();
 
         let iter = NightlyFinderIter::new(start_date);
 
