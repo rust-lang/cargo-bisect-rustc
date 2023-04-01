@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.6.6
+
+### Added
+
+- 🎉 Added bisecting of rollups. This depends on the artifacts generated for rustc-perf which is only available for x86_64-unknown-linux-gnu.
+  [#256](https://github.com/rust-lang/cargo-bisect-rustc/pull/256)
+- 🎉 Added a new User Guide with more detailed documentation and a set of examples illustrating different ways to use `cargo-bisect-rustc`. The guide is available at <https://rust-lang.github.io/cargo-bisect-rustc/>.
+  [#266](https://github.com/rust-lang/cargo-bisect-rustc/pull/266)
+
+### Changed
+
+- Added another kind of ICE output that is auto-detected.
+  [#261](https://github.com/rust-lang/cargo-bisect-rustc/pull/261)
+- Updated dependencies:
+  - tokio [#245](https://github.com/rust-lang/cargo-bisect-rustc/pull/245) [#255](https://github.com/rust-lang/cargo-bisect-rustc/pull/255)
+  - git2 [#246](https://github.com/rust-lang/cargo-bisect-rustc/pull/246) [#249](https://github.com/rust-lang/cargo-bisect-rustc/pull/249)
+  - bumpalo [#250](https://github.com/rust-lang/cargo-bisect-rustc/pull/250)
+  - pbr [#257](https://github.com/rust-lang/cargo-bisect-rustc/pull/257)
+  - tempfile [#260](https://github.com/rust-lang/cargo-bisect-rustc/pull/260)
+  - openssl [#267](https://github.com/rust-lang/cargo-bisect-rustc/pull/267)
+  - chrono [#268](https://github.com/rust-lang/cargo-bisect-rustc/pull/268)
+
+### Fixed
+
+- Fixed bounds checking when `--start` or `--end` is not specified.
+  [#243](https://github.com/rust-lang/cargo-bisect-rustc/pull/243)
+- The remote tags are now fetched from the `rust-lang/rust` repo to ensure that tag boundaries (`--start 1.65.0`) work if the tag hasn't been downloaded.
+  [#263](https://github.com/rust-lang/cargo-bisect-rustc/pull/263)
+
 ## v0.6.5
 
 ### Changed
