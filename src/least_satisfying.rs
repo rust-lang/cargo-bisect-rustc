@@ -8,10 +8,10 @@ where
 {
     let mut cache = BTreeMap::new();
     let mut predicate = |idx: usize, rm_no, lm_yes| {
-        let range = lm_yes - rm_no + 1;
+        let range: usize = lm_yes - rm_no + 1;
         // FIXME: This does not consider unknown_ranges.
         let remaining = range / 2;
-        let estimate = estimate_steps(range);
+        let estimate = if range < 3 { 0 } else { range.ilog2() as usize };
         *cache
             .entry(idx)
             .or_insert_with(|| predicate(&slice[idx], remaining, estimate))
@@ -76,33 +76,10 @@ where
     }
 }
 
-fn estimate_steps(range: usize) -> usize {
-    // Replace with int_log when it is stabilized.
-    let log2 = |mut n| {
-        let mut r = 0;
-        while n > 1 {
-            r += 1;
-            n >>= 1;
-        }
-        r
-    };
-    if range < 3 {
-        return 0;
-    }
-    let n = log2(range);
-    let e = 1 << n;
-    let x = range - e;
-    if e < 3 * x {
-        n
-    } else {
-        n - 1
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Satisfies::{No, Unknown, Yes};
-    use super::{estimate_steps, least_satisfying, Satisfies};
+    use super::{least_satisfying, Satisfies};
     use quickcheck::{QuickCheck, TestResult};
 
     fn prop(xs: Vec<Option<bool>>) -> TestResult {
@@ -185,22 +162,6 @@ mod tests {
     #[test]
     fn qc_prop() {
         QuickCheck::new().quickcheck(prop as fn(_) -> _);
-    }
-
-    #[test]
-    fn estimates() {
-        for (n, expect) in &[
-            (0, 0),
-            (1, 0),
-            (2, 0),
-            (3, 1),
-            (4, 1),
-            (5, 1),
-            (6, 2),
-            (150, 6),
-        ] {
-            assert_eq!(estimate_steps(*n), *expect);
-        }
     }
 }
 
