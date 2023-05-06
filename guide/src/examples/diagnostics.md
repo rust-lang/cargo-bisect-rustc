@@ -24,7 +24,7 @@ echo "$OUTPUT"
 # This indicates a regression when the text "non-ASCII" is in the output.
 #
 # If the regression is when the text is *not* in the output, remove the `!` prefix.
-! grep "non-ASCII" "$OUTPUT"
+! echo "$OUTPUT" | grep "non-ASCII"
 ```
 
 Then run something like:
