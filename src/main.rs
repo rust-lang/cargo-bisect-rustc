@@ -19,6 +19,7 @@ use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
 use github::get_pr_comments;
 use log::debug;
+use regex::RegexBuilder;
 use reqwest::blocking::Client;
 
 mod git;
@@ -1200,16 +1201,7 @@ impl Config {
             .filter(|c| c.user.login == "rust-timer")
             .find(|c| c.body.contains("Perf builds for each rolled up PR"))
             .context("couldn't find perf build comment")?;
-        let builds = perf_comment
-            .body
-            .lines()
-            // lines of table with PR builds
-            .filter(|l| l.starts_with("|#"))
-            // get the commit link
-            .filter_map(|l| l.split('|').nth(2))
-            // get the commit sha
-            .map(|l| l.split_once('[').unwrap().1.rsplit_once(']').unwrap().0)
-            .collect::<Vec<_>>();
+        let builds = extract_perf_shas(&perf_comment.body)?;
         let short_sha = builds
             .iter()
             .map(|sha| sha.chars().take(8).collect())
@@ -1270,6 +1262,29 @@ fn main() {
             }
         }
     }
+}
+
+/// Extracts the commits posted by the rust-timer bot on rollups, for unrolled perf builds.
+///
+/// We're looking for a commit sha, in a comment whose format has changed (and could change in the
+/// future), for example:
+/// - v1: https://github.com/rust-lang/rust/pull/113014#issuecomment-1605868471
+/// - v2, the current: https://github.com/rust-lang/rust/pull/113105#issuecomment-1610393473
+///
+/// The sha comes in later columns, so we'll look for a 40-char hex string and give priority to the
+/// last we find (to avoid possible conflicts with commits in the PR title column).
+fn extract_perf_shas(body: &str) -> anyhow::Result<Vec<&str>> {
+    let sha_regex = RegexBuilder::new(r"([0-9a-f]{40})")
+        .case_insensitive(true)
+        .build()?;
+    let builds = body
+        .lines()
+        // lines of table with PR builds
+        .filter(|l| l.starts_with("|#"))
+        // get the last sha we find, to prioritize the 3rd or 2nd columns.
+        .filter_map(|l| sha_regex.find_iter(l).last().and_then(|m| Some(m.as_str())))
+        .collect();
+    Ok(builds)
 }
 
 #[cfg(test)]
