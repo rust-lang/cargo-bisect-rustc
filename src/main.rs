@@ -19,6 +19,7 @@ use clap::{ArgAction, Parser, ValueEnum};
 use colored::Colorize;
 use github::get_pr_comments;
 use log::debug;
+use regex::RegexBuilder;
 use reqwest::blocking::Client;
 
 mod git;
@@ -1200,16 +1201,7 @@ impl Config {
             .filter(|c| c.user.login == "rust-timer")
             .find(|c| c.body.contains("Perf builds for each rolled up PR"))
             .context("couldn't find perf build comment")?;
-        let builds = perf_comment
-            .body
-            .lines()
-            // lines of table with PR builds
-            .filter(|l| l.starts_with("|#"))
-            // get the commit link
-            .filter_map(|l| l.split('|').nth(2))
-            // get the commit sha
-            .map(|l| l.split_once('[').unwrap().1.rsplit_once(']').unwrap().0)
-            .collect::<Vec<_>>();
+        let builds = extract_perf_shas(&perf_comment.body)?;
         let short_sha = builds
             .iter()
             .map(|sha| sha.chars().take(8).collect())
@@ -1270,6 +1262,29 @@ fn main() {
             }
         }
     }
+}
+
+/// Extracts the commits posted by the rust-timer bot on rollups, for unrolled perf builds.
+///
+/// We're looking for a commit sha, in a comment whose format has changed (and could change in the
+/// future), for example:
+/// - v1: https://github.com/rust-lang/rust/pull/113014#issuecomment-1605868471
+/// - v2, the current: https://github.com/rust-lang/rust/pull/113105#issuecomment-1610393473
+///
+/// The sha comes in later columns, so we'll look for a 40-char hex string and give priority to the
+/// last we find (to avoid possible conflicts with commits in the PR title column).
+fn extract_perf_shas(body: &str) -> anyhow::Result<Vec<&str>> {
+    let sha_regex = RegexBuilder::new(r"([0-9a-f]{40})")
+        .case_insensitive(true)
+        .build()?;
+    let builds = body
+        .lines()
+        // lines of table with PR builds
+        .filter(|l| l.starts_with("|#"))
+        // get the last sha we find, to prioritize the 3rd or 2nd columns.
+        .filter_map(|l| sha_regex.find_iter(l).last().and_then(|m| Some(m.as_str())))
+        .collect();
+    Ok(builds)
 }
 
 #[cfg(test)]
@@ -1338,5 +1353,75 @@ mod tests {
             "{}",
             validate_dir(main).unwrap_err()
         )
+    }
+
+    // Ensure the first version of the comment posted by the perf-bot works
+    #[test]
+    fn test_perf_builds_v1_format() {
+        // Body extracted from this v1 comment
+        // https://github.com/rust-lang/rust/pull/113014#issuecomment-1605868471
+        let body = "📌 Perf builds for each rolled up PR:
+
+|PR# | Perf Build Sha|
+|----|:-----:|
+|#113009|[05b07dad146a6d43ead9bcd1e8bc10cbd017a5f5](https://github.com/rust-lang-ci/rust/commit/05b07dad146a6d43ead9bcd1e8bc10cbd017a5f5)|
+|#113008|[581913b6789370def5158093b799baa6d4d875eb](https://github.com/rust-lang-ci/rust/commit/581913b6789370def5158093b799baa6d4d875eb)|
+|#112956|[e294bd3827eb2e878167329648f3c8178ef344e7](https://github.com/rust-lang-ci/rust/commit/e294bd3827eb2e878167329648f3c8178ef344e7)|
+|#112950|[0ed6ba504649ca1cb2672572b4ab41acfb06c86c](https://github.com/rust-lang-ci/rust/commit/0ed6ba504649ca1cb2672572b4ab41acfb06c86c)|
+|#112937|[18e108ab85b78e6966c5b5bdadfd5b8efeadf080](https://github.com/rust-lang-ci/rust/commit/18e108ab85b78e6966c5b5bdadfd5b8efeadf080)|
+
+
+*previous master*: [f7ca9df695](https://github.com/rust-lang-ci/rust/commit/f7ca9df69549470541fbf542f87a03eb9ed024b6)
+
+In the case of a perf regression, run the following command for each PR you suspect might be the cause: `@rust-timer build $SHA`
+<!-- rust-timer: rollup -->";
+        assert_eq!(
+            vec![
+                "05b07dad146a6d43ead9bcd1e8bc10cbd017a5f5",
+                "581913b6789370def5158093b799baa6d4d875eb",
+                "e294bd3827eb2e878167329648f3c8178ef344e7",
+                "0ed6ba504649ca1cb2672572b4ab41acfb06c86c",
+                "18e108ab85b78e6966c5b5bdadfd5b8efeadf080",
+            ],
+            extract_perf_shas(body).expect("extracting perf builds on v1 format failed"),
+        );
+    }
+
+    // Ensure the second version of the comment posted by the perf-bot works
+    #[test]
+    fn test_perf_builds_v2_format() {
+        // Body extracted from this v2 comment
+        // https://github.com/rust-lang/rust/pull/113105#issuecomment-1610393473
+        let body = "📌 Perf builds for each rolled up PR:
+
+| PR# | Message | Perf Build Sha |
+|----|----|:-----:|
+|#112207|Add trustzone and virtualization target features for aarch3…|`bbec6d6e413aa144c8b9346da27a0f2af299cbeb` ([link](https://github.com/rust-lang-ci/rust/commit/bbec6d6e413aa144c8b9346da27a0f2af299cbeb))|
+|#112454|Make compiletest aware of targets without dynamic linking|`70b67c09ead52f4582471650202b1a189821ed5f` ([link](https://github.com/rust-lang-ci/rust/commit/70b67c09ead52f4582471650202b1a189821ed5f))|
+|#112628|Allow comparing `Box`es with different allocators|`3043f4e577f41565443f38a6a16b7a1a08b063ad` ([link](https://github.com/rust-lang-ci/rust/commit/3043f4e577f41565443f38a6a16b7a1a08b063ad))|
+|#112692|Provide more context for `rustc +nightly -Zunstable-options…|`4ab6f33fd50237b105999cc6d32d85cce5dad61a` ([link](https://github.com/rust-lang-ci/rust/commit/4ab6f33fd50237b105999cc6d32d85cce5dad61a))|
+|#112972|Make `UnwindAction::Continue` explicit in MIR dump|`e1df9e306054655d7d41ec1ad75ade5d76a6888d` ([link](https://github.com/rust-lang-ci/rust/commit/e1df9e306054655d7d41ec1ad75ade5d76a6888d))|
+|#113020|Add tests impl via obj unless denied|`affe009b94eba41777cf02997b1780e50445d6af` ([link](https://github.com/rust-lang-ci/rust/commit/affe009b94eba41777cf02997b1780e50445d6af))|
+|#113084|Simplify some conditions|`0ce4618dbf5810aabb389edd4950c060b6b4d049` ([link](https://github.com/rust-lang-ci/rust/commit/0ce4618dbf5810aabb389edd4950c060b6b4d049))|
+|#113103|Normalize types when applying uninhabited predicate.|`241cd8cd818cdc865cdf02f0c32a40081420b772` ([link](https://github.com/rust-lang-ci/rust/commit/241cd8cd818cdc865cdf02f0c32a40081420b772))|
+
+
+*previous master*: [5ea6668646](https://github.com/rust-lang-ci/rust/commit/5ea66686467d3ec5f8c81570e7f0f16ad8dd8cc3)
+
+In the case of a perf regression, run the following command for each PR you suspect might be the cause: `@rust-timer build $SHA`
+<!-- rust-timer: rollup -->";
+        assert_eq!(
+            vec![
+                "bbec6d6e413aa144c8b9346da27a0f2af299cbeb",
+                "70b67c09ead52f4582471650202b1a189821ed5f",
+                "3043f4e577f41565443f38a6a16b7a1a08b063ad",
+                "4ab6f33fd50237b105999cc6d32d85cce5dad61a",
+                "e1df9e306054655d7d41ec1ad75ade5d76a6888d",
+                "affe009b94eba41777cf02997b1780e50445d6af",
+                "0ce4618dbf5810aabb389edd4950c060b6b4d049",
+                "241cd8cd818cdc865cdf02f0c32a40081420b772",
+            ],
+            extract_perf_shas(body).expect("extracting perf builds on v2 format failed"),
+        );
     }
 }
