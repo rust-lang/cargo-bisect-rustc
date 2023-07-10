@@ -36,7 +36,7 @@ tempfile = "3"
 xz2 = "0.1.7"
 chrono = "0.4.22"
 colored = "2"
-regex = "1.8.4"
+regex = "1.9.1"
 
 [dev-dependencies]
 quickcheck = "1"
