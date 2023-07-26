@@ -22,7 +22,7 @@ use crate::{Config, GitDate};
 pub const YYYY_MM_DD: &str = "%Y-%m-%d";
 
 pub(crate) const NIGHTLY_SERVER: &str = "https://static.rust-lang.org/dist";
-const CI_SERVER: &str = "https://s3-us-west-1.amazonaws.com/rust-lang-ci2";
+const CI_SERVER: &str = "https://ci-artifacts.rust-lang.org";
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum InstallError {
