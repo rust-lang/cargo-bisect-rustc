@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.6.7
+
+### Changed
+- Updated dependencies.
+  [#271](https://github.com/rust-lang/cargo-bisect-rustc/pull/271)
+  [#270](https://github.com/rust-lang/cargo-bisect-rustc/pull/270)
+  [#273](https://github.com/rust-lang/cargo-bisect-rustc/pull/273)
+  [#278](https://github.com/rust-lang/cargo-bisect-rustc/pull/278)
+  [#279](https://github.com/rust-lang/cargo-bisect-rustc/pull/279)
+  [#281](https://github.com/rust-lang/cargo-bisect-rustc/pull/281)
+  [#285](https://github.com/rust-lang/cargo-bisect-rustc/pull/285)
+- CI artifacts are now downloaded from https://ci-artifacts.rust-lang.org instead of https://s3-us-west-1.amazonaws.com/rust-lang-ci2 which should help with performance.
+
+### Fixed
+- Fix bisecting into rollups via unrolled perf builds
+  [#280](https://github.com/rust-lang/cargo-bisect-rustc/pull/280)
+
 ## v0.6.6
 
 ### Added
