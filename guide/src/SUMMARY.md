@@ -8,6 +8,7 @@
 - [Bisection boundaries](boundaries.md)
 - [Rustup toolchains](rustup.md)
 - [Git bisect a custom build](git-bisect.md)
+- [Alt builds](alt.md)
 - [Examples](examples/index.md)
     - [Checking diagnostics](examples/diagnostics.md)
     - [Scripting on Windows](examples/windows-scripting.md)
