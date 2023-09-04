@@ -1185,7 +1185,11 @@ impl Config {
 
     fn search_perf_builds(&self, toolchain: &Toolchain) -> anyhow::Result<BisectionResult> {
         eprintln!("Attempting to search unrolled perf builds");
-        let Toolchain {spec: ToolchainSpec::Ci { commit, .. }, ..} = toolchain else {
+        let Toolchain {
+            spec: ToolchainSpec::Ci { commit, .. },
+            ..
+        } = toolchain
+        else {
             bail!("not a ci commit");
         };
         let summary = get_commit(commit)?.summary;
@@ -1231,7 +1235,9 @@ impl Config {
             .collect::<Vec<_>>();
 
         let Some(found) = toolchains.iter().position(|t| {
-            self.install_and_test(t, &dl_spec).unwrap_or(Satisfies::Unknown) == Satisfies::Yes
+            self.install_and_test(t, &dl_spec)
+                .unwrap_or(Satisfies::Unknown)
+                == Satisfies::Yes
         }) else {
             bail!("none of the toolchains satisfied the predicate");
         };
