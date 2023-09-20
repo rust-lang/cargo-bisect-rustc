@@ -52,7 +52,7 @@ cargo check 2>&1 | grep E0642
 This can be run with:
 
 ```sh
-cargo-bisect-rustc --script "C:\\Program Files\\Git\\user\\bin\\bash.exe" -- ./test.sh
+cargo-bisect-rustc --script "C:\\Program Files\\Git\\usr\\bin\\bash.exe" -- ./test.sh
 ```
 
 This also works if you have bash from something like msys2 installed.
