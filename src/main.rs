@@ -570,13 +570,19 @@ impl Config {
         let toolchain = &result.searched[result.found];
         match self.search_perf_builds(toolchain) {
             Ok(result) => {
+                let bisection = result.bisection;
                 let url = format!(
                     "https://github.com/rust-lang-ci/rust/commit/{}",
-                    result.searched[result.found]
+                    bisection.searched[bisection.found]
                 )
                 .red()
                 .bold();
                 eprintln!("Regression in {url}");
+
+                // In case the bisected commit has been garbage-collected by github, we show its
+                // additional context here.
+                let context = &result.toolchain_descriptions[bisection.found];
+                eprintln!("The PR introducing the regression in this rollup is {context}");
             }
             Err(e) => {
                 eprintln!("ERROR: {e}");
@@ -1183,7 +1189,7 @@ impl Config {
         })
     }
 
-    fn search_perf_builds(&self, toolchain: &Toolchain) -> anyhow::Result<BisectionResult> {
+    fn search_perf_builds(&self, toolchain: &Toolchain) -> anyhow::Result<PerfBisectionResult> {
         eprintln!("Attempting to search unrolled perf builds");
         let Toolchain {
             spec: ToolchainSpec::Ci { commit, .. },
@@ -1205,13 +1211,19 @@ impl Config {
             .filter(|c| c.user.login == "rust-timer")
             .find(|c| c.body.contains("Perf builds for each rolled up PR"))
             .context("couldn't find perf build comment")?;
-        let builds = extract_perf_shas(&perf_comment.body)?;
-        let short_sha = builds
+        let context = extract_perf_builds(&perf_comment.body)?;
+        let short_sha = context
+            .builds
             .iter()
             .map(|sha| sha.chars().take(8).collect())
             .collect::<Vec<String>>();
         eprintln!("Found commits {short_sha:?}");
-        self.linear_in_commits(&builds)
+
+        let bisection = self.linear_in_commits(&context.builds)?;
+        Ok(PerfBisectionResult {
+            bisection,
+            toolchain_descriptions: context.descriptions,
+        })
     }
 
     fn linear_in_commits(&self, commits: &[&str]) -> anyhow::Result<BisectionResult> {
@@ -1257,6 +1269,16 @@ struct BisectionResult {
     dl_spec: DownloadParams,
 }
 
+/// The results of a bisection through the unrolled perf builds in a rollup:
+/// - the regular bisection results
+/// - a description of the rolled-up PRs for clearer diagnostics, in case the bisected commit
+///   doesn't exist anymore on github.
+#[derive(Clone)]
+struct PerfBisectionResult {
+    bisection: BisectionResult,
+    toolchain_descriptions: Vec<String>,
+}
+
 fn main() {
     if let Err(err) = run() {
         match err.downcast::<ExitError>() {
@@ -1270,27 +1292,81 @@ fn main() {
     }
 }
 
-/// Extracts the commits posted by the rust-timer bot on rollups, for unrolled perf builds.
+/// An in-order mapping from perf build SHA to its description.
+struct PerfBuildsContext<'a> {
+    builds: Vec<&'a str>,
+    descriptions: Vec<String>,
+}
+
+/// Extracts the commits posted by the rust-timer bot on rollups, for unrolled perf builds, with
+/// their associated context: the PR number and title if available.
 ///
-/// We're looking for a commit sha, in a comment whose format has changed (and could change in the
+/// We're looking for a commit SHA, in a comment whose format has changed (and could change in the
 /// future), for example:
 /// - v1: https://github.com/rust-lang/rust/pull/113014#issuecomment-1605868471
 /// - v2, the current: https://github.com/rust-lang/rust/pull/113105#issuecomment-1610393473
 ///
-/// The sha comes in later columns, so we'll look for a 40-char hex string and give priority to the
+/// The SHA comes in later columns, so we'll look for a 40-char hex string and give priority to the
 /// last we find (to avoid possible conflicts with commits in the PR title column).
-fn extract_perf_shas(body: &str) -> anyhow::Result<Vec<&str>> {
+///
+/// Depending on how recent the perf build commit is, it may have been garbage-collected by github:
+/// perf-builds are force pushed to the `try-perf` branch, and accessing that commit can
+/// 404. Therefore, we try to map back from that commit to the rolled-up PR present in the list of
+/// unrolled builds.
+fn extract_perf_builds(body: &str) -> anyhow::Result<PerfBuildsContext<'_>> {
+    let mut builds = Vec::new();
+    let mut descriptions = Vec::new();
+
     let sha_regex = RegexBuilder::new(r"([0-9a-f]{40})")
         .case_insensitive(true)
         .build()?;
-    let builds = body
+    for line in body
         .lines()
-        // lines of table with PR builds
+        // Only look at the lines of the unrolled perf builds table.
         .filter(|l| l.starts_with("|#"))
-        // get the last sha we find, to prioritize the 3rd or 2nd columns.
-        .filter_map(|l| sha_regex.find_iter(l).last().and_then(|m| Some(m.as_str())))
-        .collect();
-    Ok(builds)
+    {
+        // Get the last SHA we find, to prioritize the 3rd or 2nd columns.
+        let sha = sha_regex
+            .find_iter(line)
+            .last()
+            .and_then(|m| Some(m.as_str()));
+
+        // If we did find one, we try to extract the associated description.
+        let Some(sha) = sha else { continue };
+
+        let mut description = String::new();
+
+        // In v1 and v2, we know that the first column is the PR number.
+        //
+        // In the unlikely event it's missing because of a parsing discrepancy, we don't want to
+        // ignore it, and ask for feedback: we always want to have *some* context per PR, matching
+        // the number of SHAs we found.
+        let Some(pr) = line.split('|').nth(1) else {
+            bail!("Couldn't get rolled-up PR number for SHA {sha}, please open an issue.");
+        };
+
+        description.push_str(pr);
+
+        // The second column could be a link to the commit (which we don't want in the description),
+        // or the PR title (which we want).
+        if let Some(title) = line.split('|').nth(2) {
+            // For v1, this column would contain the commit, and we won't have the PR title
+            // anywhere. So we try to still give some context for that older format: if the column
+            // contains the SHA, we don't add that to the description.
+            if !title.contains(sha) {
+                description.push_str(": ");
+                description.push_str(title);
+            }
+        }
+
+        builds.push(sha);
+        descriptions.push(description);
+    }
+
+    Ok(PerfBuildsContext {
+        builds,
+        descriptions,
+    })
 }
 
 #[cfg(test)]
@@ -1381,6 +1457,8 @@ mod tests {
 
 In the case of a perf regression, run the following command for each PR you suspect might be the cause: `@rust-timer build $SHA`
 <!-- rust-timer: rollup -->";
+        let context =
+            extract_perf_builds(body).expect("extracting perf builds context on v1 format failed");
         assert_eq!(
             vec![
                 "05b07dad146a6d43ead9bcd1e8bc10cbd017a5f5",
@@ -1389,7 +1467,11 @@ In the case of a perf regression, run the following command for each PR you susp
                 "0ed6ba504649ca1cb2672572b4ab41acfb06c86c",
                 "18e108ab85b78e6966c5b5bdadfd5b8efeadf080",
             ],
-            extract_perf_shas(body).expect("extracting perf builds on v1 format failed"),
+            context.builds,
+        );
+        assert_eq!(
+            vec!["#113009", "#113008", "#112956", "#112950", "#112937",],
+            context.descriptions,
         );
     }
 
@@ -1416,6 +1498,8 @@ In the case of a perf regression, run the following command for each PR you susp
 
 In the case of a perf regression, run the following command for each PR you suspect might be the cause: `@rust-timer build $SHA`
 <!-- rust-timer: rollup -->";
+        let context =
+            extract_perf_builds(body).expect("extracting perf builds context on v2 format failed");
         assert_eq!(
             vec![
                 "bbec6d6e413aa144c8b9346da27a0f2af299cbeb",
@@ -1427,7 +1511,20 @@ In the case of a perf regression, run the following command for each PR you susp
                 "0ce4618dbf5810aabb389edd4950c060b6b4d049",
                 "241cd8cd818cdc865cdf02f0c32a40081420b772",
             ],
-            extract_perf_shas(body).expect("extracting perf builds on v2 format failed"),
+            context.builds,
+        );
+        assert_eq!(
+            vec![
+                "#112207: Add trustzone and virtualization target features for aarch3…",
+                "#112454: Make compiletest aware of targets without dynamic linking",
+                "#112628: Allow comparing `Box`es with different allocators",
+                "#112692: Provide more context for `rustc +nightly -Zunstable-options…",
+                "#112972: Make `UnwindAction::Continue` explicit in MIR dump",
+                "#113020: Add tests impl via obj unless denied",
+                "#113084: Simplify some conditions",
+                "#113103: Normalize types when applying uninhabited predicate.",
+            ],
+            context.descriptions,
         );
     }
 }
