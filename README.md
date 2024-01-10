@@ -1,8 +1,6 @@
 # Cargo Bisection
 
-[![GNU/Linux CI](https://github.com/rust-lang/cargo-bisect-rustc/workflows/GNU/Linux%20CI/badge.svg)](https://github.com/rust-lang/cargo-bisect-rustc/actions?query=workflow%3A%22GNU%2FLinux+CI%22)
-[![macOS CI](https://github.com/rust-lang/cargo-bisect-rustc/workflows/macOS%20CI/badge.svg)](https://github.com/rust-lang/cargo-bisect-rustc/actions?query=workflow%3A%22macOS+CI%22)
-[![Windows CI](https://github.com/rust-lang/cargo-bisect-rustc/workflows/Windows%20CI/badge.svg)](https://github.com/rust-lang/cargo-bisect-rustc/actions?query=workflow%3A%22Windows+CI%22)
+[![CI](https://github.com/rust-lang/cargo-bisect-rustc/actions/workflows/ci.yml/badge.svg)](https://github.com/rust-lang/cargo-bisect-rustc/actions/workflows/ci.yml)
 
 This tool bisects either Rust nightlies or CI artifacts.
 
