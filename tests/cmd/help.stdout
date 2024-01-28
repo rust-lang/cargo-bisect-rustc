@@ -13,7 +13,7 @@ Options:
       --access <ACCESS>
           How to access Rust git repository
           
-          [default: checkout]
+          [default: github]
           [possible values: checkout, github]
 
       --by-commit

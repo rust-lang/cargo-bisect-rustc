@@ -166,7 +166,7 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[arg(long, help = "Bisect via commit artifacts")]
     by_commit: bool,
 
-    #[arg(long, value_enum, help = "How to access Rust git repository", default_value_t = Access::Checkout)]
+    #[arg(long, value_enum, help = "How to access Rust git repository", default_value_t = Access::Github)]
     access: Access,
 
     #[arg(long, help = "Install the given artifact")]
