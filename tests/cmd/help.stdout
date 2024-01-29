@@ -30,7 +30,7 @@ Options:
           Force installation over existing artifacts
 
   -h, --help
-          Print help information (use `-h` for a summary)
+          Print help (see a summary with '-h')
 
       --host <HOST>
           Host triple for the compiler
@@ -55,33 +55,28 @@ Options:
           [default: error]
 
           Possible values:
-          - error:
-            Marks test outcome as `Regressed` if and only if the `rustc` process reports a
-            non-success status. This corresponds to when `rustc` has an internal compiler error
+          - error:     Marks test outcome as `Regressed` if and only if the `rustc` process reports
+            a non-success status. This corresponds to when `rustc` has an internal compiler error
             (ICE) or when it detects an error in the input program. This covers the most common use
             case for `cargo-bisect-rustc` and is thus the default setting
-          - success:
-            Marks test outcome as `Regressed` if and only if the `rustc` process reports a success
-            status. This corresponds to when `rustc` believes it has successfully compiled the
-            program. This covers the use case for when you want to bisect to see when a bug was
+          - success:   Marks test outcome as `Regressed` if and only if the `rustc` process reports
+            a success status. This corresponds to when `rustc` believes it has successfully compiled
+            the program. This covers the use case for when you want to bisect to see when a bug was
             fixed
-          - ice:
-            Marks test outcome as `Regressed` if and only if the `rustc` process issues a diagnostic
-            indicating that an internal compiler error (ICE) occurred. This covers the use case for
-            when you want to bisect to see when an ICE was introduced pon a codebase that is meant
-            to produce a clean error
-          - non-ice:
-            Marks test outcome as `Regressed` if and only if the `rustc` process does not issue a
+          - ice:       Marks test outcome as `Regressed` if and only if the `rustc` process issues a
             diagnostic indicating that an internal compiler error (ICE) occurred. This covers the
-            use case for when you want to bisect to see when an ICE was fixed
-          - non-error:
-            Marks test outcome as `Baseline` if and only if the `rustc` process reports error status
-            and does not issue any diagnostic indicating that an internal compiler error (ICE)
-            occurred. This is the use case if the regression is a case where an ill-formed program
-            has stopped being properly rejected by the compiler. (The main difference between this
-            case and `success` is the handling of ICE: `success` assumes that ICE should be
-            considered baseline; `non-error` assumes ICE should be considered a sign of a
-            regression.)
+            use case for when you want to bisect to see when an ICE was introduced pon a codebase
+            that is meant to produce a clean error
+          - non-ice:   Marks test outcome as `Regressed` if and only if the `rustc` process does not
+            issue a diagnostic indicating that an internal compiler error (ICE) occurred. This
+            covers the use case for when you want to bisect to see when an ICE was fixed
+          - non-error: Marks test outcome as `Baseline` if and only if the `rustc` process reports
+            error status and does not issue any diagnostic indicating that an internal compiler
+            error (ICE) occurred. This is the use case if the regression is a case where an
+            ill-formed program has stopped being properly rejected by the compiler. (The main
+            difference between this case and `success` is the handling of ICE: `success` assumes
+            that ICE should be considered baseline; `non-error` assumes ICE should be considered a
+            sign of a regression.)
 
       --script <SCRIPT>
           Script replacement for `cargo build` command
@@ -105,7 +100,7 @@ Options:
           
 
   -V, --version
-          Print version information
+          Print version
 
       --with-dev
           Download rustc-dev [default: no download]

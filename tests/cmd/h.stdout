@@ -14,7 +14,7 @@ Options:
       --end <END>               Right bound for search (*with* regression). You can use a date
                                 (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
       --force-install           Force installation over existing artifacts
-  -h, --help                    Print help information (use `--help` for more detail)
+  -h, --help                    Print help (see more with '--help')
 ...
       --install <INSTALL>       Install the given artifact
       --preserve                Preserve the downloaded artifacts
@@ -30,7 +30,7 @@ Options:
       --target <TARGET>         Cross-compilation target platform
       --test-dir <TEST_DIR>     Root directory for tests [default: .]
   -v, --verbose...              
-  -V, --version                 Print version information
+  -V, --version                 Print version
       --with-dev                Download rustc-dev [default: no download]
       --with-src                Download rust-src [default: no download]
       --without-cargo           Do not install cargo [default: install cargo]
