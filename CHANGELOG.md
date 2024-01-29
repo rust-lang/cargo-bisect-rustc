@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.6.8
+
+### Added
+- Added documentation for `--alt` builds.
+  [#289](https://github.com/rust-lang/cargo-bisect-rustc/pull/289)
+
+### Changed
+- ❗️ Changed the default access method to "github", meaning it will use the GitHub API to fetch commit information instead of using a local git clone. See the [access documentation](https://rust-lang.github.io/cargo-bisect-rustc/rust-src-repo.html) for more information.
+  [#307](https://github.com/rust-lang/cargo-bisect-rustc/pull/307)
+- Updated dependencies.
+  [#290](https://github.com/rust-lang/cargo-bisect-rustc/pull/290)
+  [#291](https://github.com/rust-lang/cargo-bisect-rustc/pull/291)
+  [#296](https://github.com/rust-lang/cargo-bisect-rustc/pull/296)
+  [#302](https://github.com/rust-lang/cargo-bisect-rustc/pull/302)
+  [#301](https://github.com/rust-lang/cargo-bisect-rustc/pull/301)
+  [#300](https://github.com/rust-lang/cargo-bisect-rustc/pull/300)
+  [#304](https://github.com/rust-lang/cargo-bisect-rustc/pull/304)
+  [#305](https://github.com/rust-lang/cargo-bisect-rustc/pull/305)
+  [#306](https://github.com/rust-lang/cargo-bisect-rustc/pull/306)
+  [#308](https://github.com/rust-lang/cargo-bisect-rustc/pull/308)
+
+## Fixed
+- Fixed an issue when attempting to bisect a rollup, but the perf commits have been garbage collected, to display information about the rollup so that you can see which PRs were involved.
+  [#298](https://github.com/rust-lang/cargo-bisect-rustc/pull/298)
+
 ## v0.6.7
 
 ### Changed
