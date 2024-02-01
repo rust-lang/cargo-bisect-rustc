@@ -27,6 +27,9 @@ If you don't use `gh`, you'll just need to copy and paste the token.
 `cargo-bisect-rustc` can also clone the rust repo in the current directory (as `rust.git`).
 This option can be quite slow if you don't specify the repo path at build time.
 You can specify this with the `--access` CLI argument:
+```sh
+cargo bisect-rustc --access=checkout
+```
 
 ## `RUST_SRC_REPO` environment variable
 

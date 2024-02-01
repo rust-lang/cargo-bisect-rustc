@@ -6,7 +6,7 @@ For example, this can check when either the wording has changed, or a different 
 [#109067](https://github.com/rust-lang/rust/issues/109067) is an example of where this is necessary.
 A warning started being emitted, and it is the kind of warning that cannot be turned into an error with `deny(warnings)`.
 
-The following script is intended to be used with the `--script` option:
+The following script is intended to be used with the `--script` option (set the executable flag on the script, `chmod u+x`):
 
 ```sh
 #!/bin/sh
