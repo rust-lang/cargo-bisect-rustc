@@ -1159,7 +1159,9 @@ impl Config {
 
         if !toolchains.is_empty() {
             // validate commit at start of range
-            eprintln!("checking the start range to verify it passes");
+            eprintln!(
+                "checking the start range: testing the sample code, should not reproduce the regression"
+            );
             let start_range_result = self.install_and_test(&toolchains[0], &dl_spec)?;
             if start_range_result == Satisfies::Yes {
                 bail!(
@@ -1169,7 +1171,9 @@ impl Config {
             }
 
             // validate commit at end of range
-            eprintln!("checking the end range to verify it does not pass");
+            eprintln!(
+                "checking the end range: testing the sample code, should reproduce the regression"
+            );
             let end_range_result =
                 self.install_and_test(&toolchains[toolchains.len() - 1], &dl_spec)?;
             if end_range_result == Satisfies::No {
