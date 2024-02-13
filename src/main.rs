@@ -36,11 +36,21 @@ use crate::toolchains::{
     ToolchainSpec, NIGHTLY_SERVER, YYYY_MM_DD,
 };
 
+const BORS_AUTHOR: &str = "bors";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub sha: String,
     pub date: GitDate,
     pub summary: String,
+    pub committer: Author,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Author {
+    pub name: String,
+    pub email: String,
+    pub date: GitDate,
 }
 
 /// The first commit which build artifacts are made available through the CI for
@@ -1086,10 +1096,25 @@ impl Config {
 
     fn bisect_ci_via(&self, start_sha: &str, end_ref: &str) -> anyhow::Result<BisectionResult> {
         let access = self.args.access.repo();
-        let end_sha = access.commit(end_ref)?.sha;
-        let commits = access.commits(start_sha, &end_sha)?;
+        let start = access.commit(start_sha)?;
+        let end = access.commit(end_ref)?;
+        let assert_by_bors = |c: &Commit| -> anyhow::Result<()> {
+            if c.committer.name != BORS_AUTHOR {
+                bail!(
+                    "Expected author {} to be {BORS_AUTHOR} for {}.\n \
+                     Make sure specified commits are on the master branch \
+                     and refer to a bors merge commit!",
+                    c.committer.name,
+                    c.sha
+                );
+            }
+            Ok(())
+        };
+        assert_by_bors(&start)?;
+        assert_by_bors(&end)?;
+        let commits = access.commits(start_sha, &end.sha)?;
 
-        assert_eq!(commits.last().expect("at least one commit").sha, end_sha);
+        assert_eq!(commits.last().expect("at least one commit").sha, end.sha);
 
         commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
             let sorted_by_date = a.date <= b.date;
@@ -1111,7 +1136,7 @@ impl Config {
             )
         }
 
-        self.bisect_ci_in_commits(start_sha, &end_sha, commits)
+        self.bisect_ci_in_commits(start_sha, &end.sha, commits)
     }
 
     fn bisect_ci_in_commits(
