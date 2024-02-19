@@ -40,4 +40,4 @@ regex = "1.10.1"
 
 [dev-dependencies]
 quickcheck = "1"
-trycmd = "0.14.0"
+trycmd = "0.15.0"
