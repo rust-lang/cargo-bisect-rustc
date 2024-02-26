@@ -32,8 +32,8 @@ use crate::github::get_commit;
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
-    download_progress, parse_to_naive_date, DownloadParams, InstallError, TestOutcome, Toolchain,
-    ToolchainSpec, NIGHTLY_SERVER, YYYY_MM_DD,
+    download_progress, parse_to_naive_date, DownloadError, DownloadParams, InstallError,
+    TestOutcome, Toolchain, ToolchainSpec, NIGHTLY_SERVER, YYYY_MM_DD,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -603,9 +603,23 @@ impl Config {
                 &nightly_bisection_result.searched[nightly_bisection_result.found];
 
             if let ToolchainSpec::Nightly { date } = nightly_regression.spec {
-                let previous_date = date.pred_opt().unwrap();
+                let mut previous_date = date.pred_opt().unwrap();
+                let working_commit = loop {
+                    match Bound::Date(previous_date).sha() {
+                        Ok(sha) => break sha,
+                        Err(err)
+                            if matches!(
+                                err.downcast_ref::<DownloadError>(),
+                                Some(DownloadError::NotFound(_)),
+                            ) =>
+                        {
+                            eprintln!("missing nightly for {}", previous_date.format(YYYY_MM_DD));
+                            previous_date = previous_date.pred_opt().unwrap();
+                        }
+                        Err(err) => return Err(err),
+                    }
+                };
 
-                let working_commit = Bound::Date(previous_date).sha()?;
                 let bad_commit = Bound::Date(date).sha()?;
                 eprintln!(
                     "looking for regression commit between {} and {}",
