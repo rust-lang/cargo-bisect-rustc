@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use reqwest::header::{HeaderMap, HeaderValue, InvalidHeaderValue, AUTHORIZATION, USER_AGENT};
-use reqwest::{self, blocking::Client, blocking::Response};
+use reqwest::{blocking::Client, blocking::Response};
 use serde::{Deserialize, Serialize};
 
 use crate::{parse_to_naive_date, Commit, GitDate};
