@@ -106,6 +106,6 @@ COUNT=`echo "$OUTPUT" | grep -c "unnecessary parentheses"`
 test $COUNT -eq 1
 ```
 
-If you need to use the targets directly without using `cargo` in the script, they are available in `$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/[release|debug]/...`, since `cargo-bisect-rustc` sets `$CARGO_TARGET_DIR` and `$CARGO_BUILD_TARGET`.
+If you need to use the targets directly without using `cargo` in the script, they are available in `$CARGO_TARGET_DIR/[release|debug]/...`, since `cargo-bisect-rustc` sets `$CARGO_TARGET_DIR`.
 
 Check out the [examples chapters](examples/index.md) for several examples of how to use this option.
