@@ -1,0 +1,3 @@
+bin.name = "cargo-bisect-rustc"
+args = "--start 4000-01-01 --end 9999-01-01"
+status = "failed"
