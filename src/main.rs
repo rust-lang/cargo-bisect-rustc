@@ -8,10 +8,8 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
-use std::io::Read;
 use std::path::PathBuf;
 use std::process;
-use std::str::FromStr;
 
 use anyhow::{bail, Context};
 use chrono::{Duration, NaiveDate, Utc};
@@ -22,18 +20,20 @@ use log::debug;
 use regex::RegexBuilder;
 use reqwest::blocking::Client;
 
+mod bounds;
 mod git;
 mod github;
 mod least_satisfying;
 mod repo_access;
 mod toolchains;
 
+use crate::bounds::{Bound, Bounds};
 use crate::github::get_commit;
 use crate::least_satisfying::{least_satisfying, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
-    download_progress, parse_to_naive_date, DownloadError, DownloadParams, InstallError,
-    TestOutcome, Toolchain, ToolchainSpec, NIGHTLY_SERVER, YYYY_MM_DD,
+    parse_to_naive_date, DownloadError, DownloadParams, InstallError, TestOutcome, Toolchain,
+    ToolchainSpec, YYYY_MM_DD,
 };
 
 const BORS_AUTHOR: &str = "bors";
@@ -224,49 +224,6 @@ fn validate_dir(s: &str) -> anyhow::Result<PathBuf> {
     }
 }
 
-#[derive(Clone, Debug)]
-enum Bound {
-    Commit(String),
-    Date(GitDate),
-}
-
-impl FromStr for Bound {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        parse_to_naive_date(s)
-            .map(Self::Date)
-            .or_else(|_| Ok(Self::Commit(s.to_string())))
-    }
-}
-
-impl Bound {
-    fn sha(&self) -> anyhow::Result<String> {
-        match self {
-            Bound::Commit(commit) => Ok(commit.clone()),
-            Bound::Date(date) => {
-                let date_str = date.format(YYYY_MM_DD);
-                let url =
-                    format!("{NIGHTLY_SERVER}/{date_str}/channel-rust-nightly-git-commit-hash.txt");
-
-                eprintln!("fetching {url}");
-                let client = Client::new();
-                let name = format!("nightly manifest {date_str}");
-                let mut response = download_progress(&client, &name, &url)?;
-                let mut commit = String::new();
-                response.read_to_string(&mut commit)?;
-
-                eprintln!("converted {date_str} to {commit}");
-
-                Ok(commit)
-            }
-        }
-    }
-
-    fn as_commit(&self) -> anyhow::Result<Self> {
-        self.sha().map(Bound::Commit)
-    }
-}
-
 impl Opts {
     fn emit_cargo_output(&self) -> bool {
         self.verbosity >= 2
@@ -393,15 +350,15 @@ impl RegressOn {
 
 struct Config {
     args: Opts,
+    bounds: Bounds,
     rustup_tmp_path: PathBuf,
     toolchains_path: PathBuf,
     target: String,
-    is_commit: bool,
     client: Client,
 }
 
 impl Config {
-    fn from_args(mut args: Opts) -> anyhow::Result<Config> {
+    fn from_args(args: Opts) -> anyhow::Result<Config> {
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
 
         let mut toolchains_path = home::rustup_home()?;
@@ -422,37 +379,11 @@ impl Config {
             );
         }
 
-        let is_commit = match (args.start.clone(), args.end.clone()) {
-            (Some(Bound::Commit(_)) | None, Some(Bound::Commit(_)))
-            | (Some(Bound::Commit(_)), None) => Some(true),
-
-            (Some(Bound::Date(_)) | None, Some(Bound::Date(_))) | (Some(Bound::Date(_)), None) => {
-                Some(false)
-            }
-
-            (None, None) => None,
-
-            (start, end) => bail!(
-                "cannot take different types of bounds for start/end, got start: {:?} and end {:?}",
-                start,
-                end
-            ),
-        };
-
-        if is_commit == Some(false) && args.by_commit {
-            eprintln!("finding commit range that corresponds to dates specified");
-            match (args.start, args.end) {
-                (Some(b1), Some(b2)) => {
-                    args.start = Some(b1.as_commit()?);
-                    args.end = Some(b2.as_commit()?);
-                }
-                _ => unreachable!(),
-            }
-        }
+        let bounds = Bounds::from_args(&args)?;
 
         Ok(Config {
-            is_commit: args.by_commit || is_commit == Some(true),
             args,
+            bounds,
             target,
             toolchains_path,
             rustup_tmp_path,
@@ -461,81 +392,10 @@ impl Config {
     }
 }
 
-/// Translates a tag-like bound (such as `1.62.0`) to a `Bound::Date` so that
-/// bisecting works for versions older than 167 days.
-fn fixup_bounds(
-    access: &Access,
-    start: &mut Option<Bound>,
-    end: &mut Option<Bound>,
-) -> anyhow::Result<()> {
-    let is_tag = |bound: &Option<Bound>| -> bool {
-        match bound {
-            Some(Bound::Commit(commit)) => commit.contains('.'),
-            None | Some(Bound::Date(_)) => false,
-        }
-    };
-    let is_datelike = |bound: &Option<Bound>| -> bool {
-        matches!(bound, None | Some(Bound::Date(_))) || is_tag(bound)
-    };
-    if !(is_datelike(start) && is_datelike(end)) {
-        // If the user specified an actual commit for one bound, then don't
-        // even try to convert the other bound to a date.
-        return Ok(());
-    }
-    let fixup = |which: &str, bound: &mut Option<Bound>| -> anyhow::Result<()> {
-        if is_tag(bound) {
-            if let Some(Bound::Commit(tag)) = bound {
-                let date = access.repo().bound_to_date(Bound::Commit(tag.clone()))?;
-                eprintln!(
-                    "translating --{which}={tag} to {date}",
-                    date = date.format(YYYY_MM_DD)
-                );
-                *bound = Some(Bound::Date(date));
-            }
-        }
-        Ok(())
-    };
-    fixup("start", start)?;
-    fixup("end", end)?;
-    Ok(())
-}
-
-fn check_bounds(start: &Option<Bound>, end: &Option<Bound>) -> anyhow::Result<()> {
-    // current UTC date
-    let current = today();
-    match (start, end) {
-        // start date is after end date
-        (Some(Bound::Date(start)), Some(Bound::Date(end))) if end < start => {
-            bail!(
-                "end should be after start, got start: {} and end {}",
-                start,
-                end
-            );
-        }
-        // start date is after current date
-        (Some(Bound::Date(start)), _) if start > &current => {
-            bail!(
-                "start date should be on or before current date, got start date request: {} and current date is {}",
-                start,
-                current
-            );
-        }
-        // end date is after current date
-        (_, Some(Bound::Date(end))) if end > &current => {
-            bail!(
-                "end date should be on or before current date, got start date request: {} and current date is {}",
-                end,
-                current
-            );
-        }
-        _ => Ok(()),
-    }
-}
-
 // Application entry point
 fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
-    let mut args = match Cargo::try_parse() {
+    let args = match Cargo::try_parse() {
         Ok(Cargo::BisectRustc(args)) => args,
         Err(e) => match e.context().next() {
             None => {
@@ -545,8 +405,6 @@ fn run() -> anyhow::Result<()> {
             _ => Opts::parse(),
         },
     };
-    fixup_bounds(&args.access, &mut args.start, &mut args.end)?;
-    check_bounds(&args.start, &args.end)?;
     let cfg = Config::from_args(args)?;
 
     if let Some(ref bound) = cfg.args.install {
@@ -616,8 +474,8 @@ impl Config {
 
     // bisection entry point
     fn bisect(&self) -> anyhow::Result<()> {
-        if self.is_commit {
-            let bisection_result = self.bisect_ci()?;
+        if let Bounds::Commits { start, end } = &self.bounds {
+            let bisection_result = self.bisect_ci(start, end)?;
             self.print_results(&bisection_result);
             self.do_perf_search(&bisection_result);
         } else {
@@ -674,18 +532,20 @@ fn searched_range(
         (ToolchainSpec::Ci { .. }, ToolchainSpec::Ci { .. }) => (first_toolchain, last_toolchain),
 
         _ => {
-            let start_toolchain = if let Some(Bound::Date(date)) = cfg.args.start {
-                ToolchainSpec::Nightly { date }
-            } else {
-                first_toolchain
-            };
-
-            (
-                start_toolchain,
-                ToolchainSpec::Nightly {
-                    date: get_end_date(cfg),
-                },
-            )
+            // The searched_toolchains is a subset of the range actually
+            // searched since they don't always include the complete bounds
+            // due to `Config::bisect_nightlies` narrowing the range. Show the
+            // true range of dates searched.
+            match cfg.bounds {
+                Bounds::SearchNightlyBackwards { end } => {
+                    (first_toolchain, ToolchainSpec::Nightly { date: end })
+                }
+                Bounds::Commits { .. } => unreachable!("expected nightly bisect"),
+                Bounds::Dates { start, end } => (
+                    ToolchainSpec::Nightly { date: start },
+                    ToolchainSpec::Nightly { date: end },
+                ),
+            }
         }
     }
 }
@@ -927,32 +787,6 @@ impl Config {
     }
 }
 
-fn get_start_date(cfg: &Config) -> NaiveDate {
-    if let Some(Bound::Date(date)) = cfg.args.start {
-        date
-    } else {
-        get_end_date(cfg)
-    }
-}
-
-fn get_end_date(cfg: &Config) -> NaiveDate {
-    if let Some(Bound::Date(date)) = cfg.args.end {
-        date
-    } else {
-        match (Toolchain::default_nightly(), &cfg.args.start) {
-            // Neither --start or --end specified, default to the current
-            // nightly (if available).
-            (Some(date), None) => date,
-            // --start only, assume --end=today
-            _ => today(),
-        }
-    }
-}
-
-fn date_is_future(test_date: NaiveDate) -> bool {
-    test_date > today()
-}
-
 impl Config {
     // nightlies branch of bisect execution
     fn bisect_nightlies(&self) -> anyhow::Result<BisectionResult> {
@@ -964,27 +798,25 @@ impl Config {
 
         // before this date we didn't have -std packages
         let end_at = NaiveDate::from_ymd_opt(2015, 10, 20).unwrap();
+        // The date where a passing build is first found. This becomes
+        // the new start point of the bisection range.
         let mut first_success = None;
 
-        let mut nightly_date = get_start_date(self);
-        let mut last_failure = get_end_date(self);
-        let has_start = self.args.start.is_some();
+        // nightly_date is the date we are currently testing to find the start
+        // point. The loop below modifies nightly_date towards older dates
+        // as it tries to find the starting point. It will become the basis
+        // for setting first_success once a passing toolchain is found.
+        //
+        // last_failure is the oldest date where a regression was found while
+        // walking backwards. This becomes the new endpoint of the bisection
+        // range.
+        let (mut nightly_date, mut last_failure) = match self.bounds {
+            Bounds::SearchNightlyBackwards { end } => (end, end),
+            Bounds::Commits { .. } => unreachable!(),
+            Bounds::Dates { start, end } => (start, end),
+        };
 
-        // validate start and end dates to confirm that they are not future dates
-        // start date validation
-        if has_start && date_is_future(nightly_date) {
-            bail!(
-                "start date must be on or before the current date. received start date request {}",
-                nightly_date
-            )
-        }
-        // end date validation
-        if date_is_future(last_failure) {
-            bail!(
-                "end date must be on or before the current date. received end date request {}",
-                nightly_date
-            )
-        }
+        let has_start = self.args.start.is_some();
 
         let mut nightly_iter = NightlyFinderIter::new(nightly_date);
 
@@ -1110,22 +942,8 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 
 impl Config {
     // CI branch of bisect execution
-    fn bisect_ci(&self) -> anyhow::Result<BisectionResult> {
-        eprintln!("bisecting ci builds");
-        let start = if let Some(Bound::Commit(ref sha)) = self.args.start {
-            sha
-        } else {
-            EPOCH_COMMIT
-        };
-
-        let end = if let Some(Bound::Commit(ref sha)) = self.args.end {
-            sha
-        } else {
-            "origin/master"
-        };
-
-        eprintln!("starting at {}, ending at {}", start, end);
-
+    fn bisect_ci(&self, start: &str, end: &str) -> anyhow::Result<BisectionResult> {
+        eprintln!("bisecting ci builds starting at {start}, ending at {end}");
         self.bisect_ci_via(start, end)
     }
 
@@ -1432,47 +1250,6 @@ fn extract_perf_builds(body: &str) -> anyhow::Result<PerfBuildsContext<'_>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Start and end date validations
-    #[test]
-    fn test_check_bounds_valid_bounds() {
-        let date1 = today().pred_opt().unwrap();
-        let date2 = today().pred_opt().unwrap();
-        assert!(check_bounds(&Some(Bound::Date(date1)), &Some(Bound::Date(date2))).is_ok());
-    }
-
-    #[test]
-    fn test_check_bounds_invalid_start_after_end() {
-        let start = today();
-        let end = today().pred_opt().unwrap();
-        assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
-    }
-
-    #[test]
-    fn test_check_bounds_invalid_start_after_current() {
-        let start = today().succ_opt().unwrap();
-        let end = today();
-        assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
-    }
-
-    #[test]
-    fn test_check_bounds_invalid_start_after_current_without_end() {
-        let start = today().succ_opt().unwrap();
-        assert!(check_bounds(&Some(Bound::Date(start)), &None).is_err());
-    }
-
-    #[test]
-    fn test_check_bounds_invalid_end_after_current() {
-        let start = today();
-        let end = today().succ_opt().unwrap();
-        assert!(check_bounds(&Some(Bound::Date(start)), &Some(Bound::Date(end))).is_err());
-    }
-
-    #[test]
-    fn test_check_bounds_invalid_end_after_current_without_start() {
-        let end = today().succ_opt().unwrap();
-        assert!(check_bounds(&None, &Some(Bound::Date(end))).is_err());
-    }
 
     #[test]
     fn test_nightly_finder_iterator() {

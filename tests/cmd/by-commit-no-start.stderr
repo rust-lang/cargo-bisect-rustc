@@ -1,0 +1,1 @@
+ERROR: --by-commit with an end date requires --start to be specified
