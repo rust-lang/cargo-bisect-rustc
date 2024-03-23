@@ -13,20 +13,27 @@ use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;
 
-use crate::Commit;
+use crate::{Author, Commit, GitDate, BORS_AUTHOR};
 
 impl Commit {
     // Takes &mut because libgit2 internally caches summaries
     fn from_git2_commit(commit: &mut Git2Commit<'_>) -> Self {
+        let committer = commit.committer();
         Commit {
             sha: commit.id().to_string(),
-            date: Utc
-                .timestamp_opt(commit.time().seconds(), 0)
-                .unwrap()
-                .date_naive(),
+            date: time_to_date(&commit.time()),
             summary: String::from_utf8_lossy(commit.summary_bytes().unwrap()).to_string(),
+            committer: Author {
+                name: committer.name().unwrap_or("").to_string(),
+                email: committer.email().unwrap_or("").to_string(),
+                date: time_to_date(&committer.when()),
+            },
         }
     }
+}
+
+fn time_to_date(time: &git2::Time) -> GitDate {
+    Utc.timestamp_opt(time.seconds(), 0).unwrap().date_naive()
 }
 
 struct RustcRepo {
@@ -145,8 +152,12 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> anyhow::Res
     // two commits are merge commits made by bors
     let assert_by_bors = |c: &Git2Commit<'_>| -> anyhow::Result<()> {
         match c.author().name() {
-            Some("bors") => Ok(()),
-            Some(author) => bail!("Expected author {} to be bors for {}.\n Make sure specified commits are on the master branch!", author, c.id()),
+            Some(author) if author == BORS_AUTHOR => Ok(()),
+            Some(author) => bail!(
+                "Expected author {author} to be {BORS_AUTHOR} for {}.\n \
+                Make sure specified commits are on the master branch!",
+                c.id()
+            ),
             None => bail!("No author for {}", c.id()),
         }
     };
@@ -167,7 +178,7 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> anyhow::Res
         res.push(Commit::from_git2_commit(&mut current));
         match current.parents().next() {
             Some(c) => {
-                if c.author().name() != Some("bors") {
+                if c.author().name() != Some(BORS_AUTHOR) {
                     debug!(
                         "{:?} has non-bors author: {:?}, skipping",
                         c.id(),

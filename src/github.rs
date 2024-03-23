@@ -3,7 +3,7 @@ use reqwest::header::{HeaderMap, HeaderValue, InvalidHeaderValue, AUTHORIZATION,
 use reqwest::{blocking::Client, blocking::Response};
 use serde::{Deserialize, Serialize};
 
-use crate::{parse_to_naive_date, Commit, GitDate};
+use crate::{parse_to_naive_date, Author, Commit, GitDate, BORS_AUTHOR};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GithubCommitComparison {
@@ -16,8 +16,8 @@ struct GithubCommitElem {
 }
 #[derive(Serialize, Deserialize, Debug)]
 struct GithubCommit {
-    author: GithubAuthor,
-    committer: GithubAuthor,
+    author: Option<GithubAuthor>,
+    committer: Option<GithubAuthor>,
     message: String,
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -38,19 +38,33 @@ pub(crate) struct GithubComment {
 
 impl GithubCommitElem {
     fn date(&self) -> anyhow::Result<GitDate> {
-        let (date_str, _) =
-            self.commit.committer.date.split_once('T').context(
-                "commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z",
-            )?;
+        let (date_str, _) = self
+            .commit
+            .committer
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("commit should have committer"))?
+            .date
+            .split_once('T')
+            .context("commit date should folllow the ISO 8061 format, eg: 2022-05-04T09:55:51Z")?;
         Ok(parse_to_naive_date(date_str)?)
     }
 
     fn git_commit(self) -> anyhow::Result<Commit> {
         let date = self.date()?;
+        let committer = self
+            .commit
+            .committer
+            .ok_or_else(|| anyhow::anyhow!("commit should have committer"))?;
+        let committer = Author {
+            name: committer.name,
+            email: committer.email,
+            date,
+        };
         Ok(Commit {
             sha: self.sha,
             date,
             summary: self.commit.message,
+            committer,
         })
     }
 }
@@ -123,13 +137,11 @@ impl CommitsQuery<'_> {
         let mut commits = Vec::new();
 
         // focus on Pull Request merges, all authored and committed by bors.
-        let author = "bors";
-
         let client = Client::builder().default_headers(headers()?).build()?;
         for page in 1.. {
             let url = CommitsUrl {
                 page,
-                author,
+                author: BORS_AUTHOR,
                 since: self.since_date,
                 sha: self.most_recent_sha,
             }
@@ -138,21 +150,17 @@ impl CommitsQuery<'_> {
             let response: Response = client.get(&url).send()?;
 
             let action = parse_paged_elems(response, |elem: GithubCommitElem| {
-                let date = elem.date()?;
-                let sha = elem.sha.clone();
-                let summary = elem.commit.message;
-                let commit = Commit { sha, date, summary };
-                commits.push(commit);
-
-                Ok(if elem.sha == self.earliest_sha {
+                let found_last = elem.sha == self.earliest_sha;
+                if found_last {
                     eprintln!(
                         "ending github query because we found starting sha: {}",
                         elem.sha
                     );
-                    Loop::Break
-                } else {
-                    Loop::Next
-                })
+                }
+                let commit = elem.git_commit()?;
+                commits.push(commit);
+
+                Ok(if found_last { Loop::Break } else { Loop::Next })
             })?;
 
             if let Loop::Break = action {
@@ -254,9 +262,15 @@ mod tests {
     #[test]
     fn test_github() {
         let c = get_commit("25674202bb7415e0c0ecd07856749cfb7f591be6").unwrap();
+        let committer = Author {
+            name: String::from("bors"),
+            email: String::from("bors@rust-lang.org"),
+            date: GitDate::from_ymd_opt(2022, 5, 4).unwrap(),
+        };
         let expected_c = Commit { sha: "25674202bb7415e0c0ecd07856749cfb7f591be6".to_string(), 
                                 date: parse_to_naive_date("2022-05-04").unwrap(),
-                                summary: "Auto merge of #96695 - JohnTitor:rollup-oo4fc1h, r=JohnTitor\n\nRollup of 6 pull requests\n\nSuccessful merges:\n\n - #96597 (openbsd: unbreak build on native platform)\n - #96662 (Fix typo in lint levels doc)\n - #96668 (Fix flaky rustdoc-ui test because it did not replace time result)\n - #96679 (Quick fix for #96223.)\n - #96684 (Update `ProjectionElem::Downcast` documentation)\n - #96686 (Add some TAIT-related tests)\n\nFailed merges:\n\nr? `@ghost`\n`@rustbot` modify labels: rollup".to_string()
+                                summary: "Auto merge of #96695 - JohnTitor:rollup-oo4fc1h, r=JohnTitor\n\nRollup of 6 pull requests\n\nSuccessful merges:\n\n - #96597 (openbsd: unbreak build on native platform)\n - #96662 (Fix typo in lint levels doc)\n - #96668 (Fix flaky rustdoc-ui test because it did not replace time result)\n - #96679 (Quick fix for #96223.)\n - #96684 (Update `ProjectionElem::Downcast` documentation)\n - #96686 (Add some TAIT-related tests)\n\nFailed merges:\n\nr? `@ghost`\n`@rustbot` modify labels: rollup".to_string(),
+                                committer,
                             };
         assert_eq!(c, expected_c)
     }
