@@ -21,7 +21,7 @@ set -e
 
 cargo doc
 
-grep "some example text" $CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/doc/mycrate/fn.foo.html
+grep "some example text" $CARGO_TARGET_DIR/doc/mycrate/fn.foo.html
 ```
 
 This can be used with the `--script` option:
