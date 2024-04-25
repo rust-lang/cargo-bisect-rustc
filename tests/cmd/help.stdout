@@ -46,6 +46,10 @@ Options:
       --preserve-target
           Preserve the target directory used for builds
 
+      --pretend-to-be-stable
+          Pretend to be a stable compiler (disable features, report a version that looks like a
+          stable version)
+
       --prompt
           Manually evaluate for regression with prompts
 
