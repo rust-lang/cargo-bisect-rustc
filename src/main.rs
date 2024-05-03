@@ -180,6 +180,20 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
 
     #[arg(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
+
+    #[arg(
+        long,
+        default_value = "Test condition NOT matched",
+        help = "Text shown when a test fails to match the condition requested"
+    )]
+    term_new: Option<String>,
+
+    #[arg(
+        long,
+        default_value = "Test condition matched",
+        help = "Text shown when a test does match the condition requested"
+    )]
+    term_old: Option<String>,
 }
 
 pub type GitDate = NaiveDate;
@@ -337,7 +351,7 @@ enum RegressOn {
     /// Marks test outcome as `Regressed` if and only if the `rustc`
     /// process issues a diagnostic indicating that an internal compiler error
     /// (ICE) occurred. This covers the use case for when you want to bisect to
-    /// see when an ICE was introduced pon a codebase that is meant to produce
+    /// see when an ICE was introduced on a codebase that is meant to produce
     /// a clean error.
     Ice,
 
@@ -865,6 +879,9 @@ impl Config {
         t: &Toolchain,
         dl_spec: &DownloadParams,
     ) -> Result<Satisfies, InstallError> {
+        let regress = self.args.regress;
+        let term_old = self.args.term_old.clone().unwrap_or_default();
+        let term_new = self.args.term_new.clone().unwrap_or_default();
         match t.install(&self.client, dl_spec) {
             Ok(()) => {
                 let outcome = t.test(self);
@@ -873,7 +890,11 @@ impl Config {
                     TestOutcome::Baseline => Satisfies::No,
                     TestOutcome::Regressed => Satisfies::Yes,
                 };
-                eprintln!("RESULT: {}, ===> {}", t, r);
+                eprintln!(
+                    "RESULT: {}, ===> {}",
+                    t,
+                    r.msg_with_context(&regress, &term_old, &term_new)
+                );
                 remove_toolchain(self, t, dl_spec);
                 eprintln!();
                 Ok(r)

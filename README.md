@@ -6,6 +6,14 @@ This tool bisects either Rust nightlies or CI artifacts.
 
 [**Documentation**](https://rust-lang.github.io/cargo-bisect-rustc/)
 
+To run the documentation book locally, install [mdBook](https://github.com/rust-lang/mdBook):
+
+``` sh
+cd guide
+mdbook serve # launch a local server to allow you to easily see and update changes you make
+mdbook build # build the book HTML
+```
+
 ## License
 
 Licensed under either of

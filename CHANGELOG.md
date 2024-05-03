@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.9
+
+### Added
+- Flags `--term-old` and `--term-new` to allow custom messages when bisecting a regression.
+
 ## v0.6.8
 
 ### Added

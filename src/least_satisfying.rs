@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::RegressOn;
+
 pub fn least_satisfying<T, P>(slice: &[T], mut predicate: P) -> usize
 where
     T: fmt::Display + fmt::Debug,
@@ -170,6 +172,32 @@ pub enum Satisfies {
     Yes,
     No,
     Unknown,
+}
+
+impl Satisfies {
+    pub fn msg_with_context(&self, regress: &RegressOn, term_old: &str, term_new: &str) -> String {
+        let msg_yes = if regress == &RegressOn::Error || regress == &RegressOn::Ice {
+            // YES: compiles, does not reproduce the regression
+            term_new
+        } else {
+            // NO: compile error, reproduces the regression
+            term_old
+        };
+
+        let msg_no = if regress == &RegressOn::Error || regress == &RegressOn::Ice {
+            // YES: compile error
+            term_old
+        } else {
+            // NO: compiles
+            term_new
+        };
+
+        match self {
+            Self::Yes => msg_yes.to_string(),
+            Self::No => msg_no.to_string(),
+            Self::Unknown => "Unable to figure out if the condition matched".to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Satisfies {
