@@ -183,14 +183,12 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
 
     #[arg(
         long,
-        default_value = "Test condition NOT matched",
         help = "Text shown when a test fails to match the condition requested"
     )]
     term_new: Option<String>,
 
     #[arg(
         long,
-        default_value = "Test condition matched",
         help = "Text shown when a test does match the condition requested"
     )]
     term_old: Option<String>,

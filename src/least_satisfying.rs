@@ -175,26 +175,49 @@ pub enum Satisfies {
 }
 
 impl Satisfies {
-    pub fn msg_with_context(&self, regress: &RegressOn, term_old: &str, term_new: &str) -> String {
-        let msg_yes = if regress == &RegressOn::Error || regress == &RegressOn::Ice {
-            // YES: compiles, does not reproduce the regression
-            term_new
+    // Flipping the semantic value according to the kind of bisection we are running
+    fn format(&self, flip_value: bool, term: &str, regress: RegressOn) -> String {
+        if flip_value {
+            let default = match regress {
+                RegressOn::Error => "Successfully compile",
+                RegressOn::Success => "Compile error",
+                RegressOn::NonError => "Compile error (no ICE)",
+                RegressOn::Ice => "Did not ICE",
+                RegressOn::NonIce => "Found ICE",
+            }
+            .to_string();
+            term.is_empty().then(|| default).unwrap_or(term.to_string())
         } else {
+            let default = match regress {
+                RegressOn::Error => "Compile error",
+                RegressOn::Success => "Successfully compiles",
+                RegressOn::NonError => "Successfully compiles",
+                RegressOn::Ice => "Found ICE",
+                RegressOn::NonIce => "Did not ICE",
+            }
+            .to_string();
+            term.is_empty().then(|| default).unwrap_or(term.to_string())
+        }
+    }
+
+    pub fn msg_with_context(&self, regress: &RegressOn, term_old: &str, term_new: &str) -> String {
+        let msg_yes = match regress {
+            // YES: compiles, does not reproduce the regression
+            RegressOn::Error | RegressOn::Ice => self.format(false, term_new, *regress),
             // NO: compile error, reproduces the regression
-            term_old
+            _ => self.format(true, term_old, *regress),
         };
 
-        let msg_no = if regress == &RegressOn::Error || regress == &RegressOn::Ice {
+        let msg_no = match regress {
             // YES: compile error
-            term_old
-        } else {
+            RegressOn::Error | RegressOn::Ice => self.format(true, term_old, *regress),
             // NO: compiles
-            term_new
+            _ => self.format(true, term_new, *regress),
         };
 
         match self {
-            Self::Yes => msg_yes.to_string(),
-            Self::No => msg_no.to_string(),
+            Self::Yes => msg_yes,
+            Self::No => msg_no,
             Self::Unknown => "Unable to figure out if the condition matched".to_string(),
         }
     }
