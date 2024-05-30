@@ -183,15 +183,13 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
 
     #[arg(
         long,
-        default_value = "Test condition NOT matched",
-        help = "Text shown when a test fails to match the condition requested"
+        help = "Text shown when a test does match the condition requested"
     )]
     term_new: Option<String>,
 
     #[arg(
         long,
-        default_value = "Test condition matched",
-        help = "Text shown when a test does match the condition requested"
+        help = "Text shown when a test fails to match the condition requested"
     )]
     term_old: Option<String>,
 }
@@ -880,8 +878,44 @@ impl Config {
         dl_spec: &DownloadParams,
     ) -> Result<Satisfies, InstallError> {
         let regress = self.args.regress;
-        let term_old = self.args.term_old.clone().unwrap_or_default();
-        let term_new = self.args.term_new.clone().unwrap_or_default();
+        let term_old = self.args.term_old.as_deref().unwrap_or_else(|| {
+            if self.args.script.is_some() {
+                match regress {
+                    RegressOn::Error => "Script returned success",
+                    RegressOn::Success => "Script returned error",
+                    RegressOn::Ice => "Script did not ICE",
+                    RegressOn::NonIce => "Script found ICE",
+                    RegressOn::NonError => "Script returned error (no ICE)",
+                }
+            } else {
+                match regress {
+                    RegressOn::Error => "Successfully compiled",
+                    RegressOn::Success => "Compile error",
+                    RegressOn::Ice => "Did not ICE",
+                    RegressOn::NonIce => "Found ICE",
+                    RegressOn::NonError => "Compile error (no ICE)",
+                }
+            }
+        });
+        let term_new = self.args.term_new.as_deref().unwrap_or_else(|| {
+            if self.args.script.is_some() {
+                match regress {
+                    RegressOn::Error => "Script returned error",
+                    RegressOn::Success => "Script returned success",
+                    RegressOn::Ice => "Script found ICE",
+                    RegressOn::NonIce => "Script did not ICE",
+                    RegressOn::NonError => "Script returned success or ICE",
+                }
+            } else {
+                match regress {
+                    RegressOn::Error => "Compile error",
+                    RegressOn::Success => "Successfully compiled",
+                    RegressOn::Ice => "Found ICE",
+                    RegressOn::NonIce => "Did not ICE",
+                    RegressOn::NonError => "Successfully compiled or ICE",
+                }
+            }
+        });
         match t.install(&self.client, dl_spec) {
             Ok(()) => {
                 let outcome = t.test(self);
@@ -893,7 +927,7 @@ impl Config {
                 eprintln!(
                     "RESULT: {}, ===> {}",
                     t,
-                    r.msg_with_context(&regress, &term_old, &term_new)
+                    r.msg_with_context(term_old, term_new)
                 );
                 remove_toolchain(self, t, dl_spec);
                 eprintln!();

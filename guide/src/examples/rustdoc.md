@@ -27,5 +27,6 @@ grep "some example text" $CARGO_TARGET_DIR/doc/mycrate/fn.foo.html
 This can be used with the `--script` option:
 
 ```sh
-cargo-bisect-rustc --start=2023-01-22 --end=2023-03-18 --script=./test.sh
+cargo-bisect-rustc --start=2023-01-22 --end=2023-03-18 --script=./test.sh \
+    --term-old="Found example text" --term-new="Failed, or did not find text"
 ```

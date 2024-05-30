@@ -27,7 +27,8 @@ fi
 And run with:
 
 ```sh
-cargo bisect-rustc --start 1.68.0 --end 1.69.0 -c rust-docs --script ./test.sh
+cargo bisect-rustc --start 1.68.0 --end 1.69.0 -c rust-docs --script ./test.sh \
+    --term-old="Did not find" --term-new="Found"
 ```
 
 > **Note**: This may not work on all targets since `cargo-bisect-rustc` doesn't properly handle rustup manifests, which alias some targets to other targets.

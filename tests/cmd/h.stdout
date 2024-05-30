@@ -28,10 +28,8 @@ Options:
   -t, --timeout <TIMEOUT>       Assume failure after specified number of seconds (for bisecting
                                 hangs)
       --target <TARGET>         Cross-compilation target platform
-      --term-new <TERM_NEW>     Text shown when a test fails to match the condition requested
-                                [default: "Test condition NOT matched"]
-      --term-old <TERM_OLD>     Text shown when a test does match the condition requested [default:
-                                "Test condition matched"]
+      --term-new <TERM_NEW>     Text shown when a test does match the condition requested
+      --term-old <TERM_OLD>     Text shown when a test fails to match the condition requested
       --test-dir <TEST_DIR>     Root directory for tests [default: .]
   -v, --verbose...              
   -V, --version                 Print version

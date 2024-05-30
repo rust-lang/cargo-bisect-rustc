@@ -23,12 +23,14 @@ fi
 echo "$OUTPUT"
 # This indicates a regression when the text "non-ASCII" is in the output.
 #
-# If the regression is when the text is *not* in the output, remove the `!` prefix.
+# If the regression is when the text is *not* in the output, remove the `!` prefix
+# (and customize the `--term-old` and `--term-new` CLI options if you want).
 ! echo "$OUTPUT" | grep "non-ASCII"
 ```
 
 Then run something like:
 
 ```sh
-cargo bisect-rustc --start=1.67.0 --end=1.68.0 --script ./test.sh
+cargo bisect-rustc --start=1.67.0 --end=1.68.0 --script ./test.sh \
+    --term-old="No warning" --term-new="Found non-ASCII warning"
 ```
