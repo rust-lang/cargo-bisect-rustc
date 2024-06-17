@@ -148,6 +148,15 @@ impl CommitsQuery<'_> {
             .url();
 
             let response: Response = client.get(&url).send()?;
+            let status = response.status();
+            if !status.is_success() {
+                bail!(
+                    "error: url <{}> response {}: {}",
+                    url,
+                    status,
+                    response.text().unwrap_or_else(|_| format!("<empty>"))
+                );
+            }
 
             let action = parse_paged_elems(response, |elem: GithubCommitElem| {
                 let found_last = elem.sha == self.earliest_sha;
