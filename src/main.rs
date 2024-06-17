@@ -947,10 +947,10 @@ impl Config {
         self.bisect_ci_via(start, end)
     }
 
-    fn bisect_ci_via(&self, start_sha: &str, end_ref: &str) -> anyhow::Result<BisectionResult> {
+    fn bisect_ci_via(&self, start_sha: &str, end_sha: &str) -> anyhow::Result<BisectionResult> {
         let access = self.args.access.repo();
         let start = access.commit(start_sha)?;
-        let end = access.commit(end_ref)?;
+        let end = access.commit(end_sha)?;
         let assert_by_bors = |c: &Commit| -> anyhow::Result<()> {
             if c.committer.name != BORS_AUTHOR {
                 bail!(
@@ -967,7 +967,15 @@ impl Config {
         assert_by_bors(&end)?;
         let commits = access.commits(start_sha, &end.sha)?;
 
-        assert_eq!(commits.last().expect("at least one commit").sha, end.sha);
+        let Some(last) = commits.last() else {
+            bail!("expected at least one commit");
+        };
+        if !last.sha.starts_with(&end.sha) {
+            bail!(
+                "expected the last commit to be {end_sha}, but got {}",
+                last.sha
+            );
+        }
 
         commits.iter().zip(commits.iter().skip(1)).all(|(a, b)| {
             let sorted_by_date = a.date <= b.date;
@@ -1010,7 +1018,7 @@ impl Config {
         }
 
         if let Some(c) = commits.last() {
-            if end != "origin/master" && !c.sha.starts_with(end) {
+            if !c.sha.starts_with(end) {
                 bail!("expected to end with {}, but ended with {}", end, c.sha);
             }
         }

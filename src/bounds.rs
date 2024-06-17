@@ -61,6 +61,8 @@ pub enum Bounds {
     /// date where the regression does not occur.
     SearchNightlyBackwards { end: GitDate },
     /// Search between two commits.
+    ///
+    /// `start` and `end` must be SHA1 hashes of the commit object.
     Commits { start: String, end: String },
     /// Search between two dates.
     Dates { start: GitDate, end: GitDate },
@@ -91,7 +93,7 @@ impl Bounds {
             }
             (Some(Bound::Commit(start)), None) => Bounds::Commits {
                 start,
-                end: "origin/master".to_string(),
+                end: args.access.repo().commit("origin/master")?.sha,
             },
             (None, Some(Bound::Commit(end))) => Bounds::Commits {
                 start: EPOCH_COMMIT.to_string(),
