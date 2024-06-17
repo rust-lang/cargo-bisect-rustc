@@ -212,15 +212,13 @@ fn installed_nightly_or_latest() -> anyhow::Result<GitDate> {
 
 /// Returns the date of the latest nightly (fetched from the network).
 fn find_latest_nightly() -> anyhow::Result<GitDate> {
-    let url = format!("{NIGHTLY_SERVER}/channel-rust-nightly.toml");
+    let url = format!("{NIGHTLY_SERVER}/channel-rust-nightly-date.txt");
     eprintln!("fetching {url}");
     let client = Client::new();
-    let mut response = download_progress(&client, "nightly manifest", &url)?;
-    let mut manifest = String::new();
-    response.read_to_string(&mut manifest)?;
-    let manifest: toml::Value = toml::from_str(&manifest)?;
-    let date = manifest["date"].as_str().expect("date is a string");
-    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d")?;
+    let mut response = download_progress(&client, "nightly date", &url)?;
+    let mut body = String::new();
+    response.read_to_string(&mut body)?;
+    let date = NaiveDate::parse_from_str(&body, "%Y-%m-%d")?;
     eprintln!("determined the latest nightly is {date}");
     Ok(date)
 }
