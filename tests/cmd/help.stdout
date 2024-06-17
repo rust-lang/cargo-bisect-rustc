@@ -92,14 +92,10 @@ Options:
           Cross-compilation target platform
 
       --term-new <TERM_NEW>
-          Text shown when a test fails to match the condition requested
-          
-          [default: "Test condition NOT matched"]
+          Text shown when a test does match the condition requested
 
       --term-old <TERM_OLD>
-          Text shown when a test does match the condition requested
-          
-          [default: "Test condition matched"]
+          Text shown when a test fails to match the condition requested
 
       --test-dir <TEST_DIR>
           Root directory for tests

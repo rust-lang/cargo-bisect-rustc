@@ -138,7 +138,7 @@ cargo bisect-rustc --script=./test.sh \
 
 ## Custom bisection messages
 
-[Available from v0.6.9]
+*Available from v0.6.9*
 
 You can add custom messages when bisecting a regression. Taking inspiration from git-bisect, with `term-new` and `term-old` you can set custom messages to indicate if a regression matches the condition set by the bisection.
 
@@ -151,18 +151,8 @@ cargo bisect-rustc \
     --term-new "Yes, this build reproduces the regression, compile error"
 ```
 
-Note that `--term-{old,new}` are aware of the `--regress` parameter. If the bisection is looking for a build to reproduce a regression (i.e. `--regress {error,ice}`), `--term-old` indicates a point in time where the regression does not reproduce and `--term-new` indicates that it does.
+In other words, `--term-old` is displayed for older compilers that **do not** exhibit the regression. `--term-new` is for newer compilers which do exhibit the regression.
 
-On the other hand, if `--regress {non-error,non-ice,success}` you are looking into bisecting when a condition of error stopped being reproducible (e.g. some faulty code does not produce an error anymore). In this case `cargo-bisect` flips the meaning of these two parameters.
+What counts as a "regression" is defined by the [`--regress`](usage.html#regression-check) CLI option. By default, a regression is a compile-error (which is equivalent to `--term-new`). If you flip the definition of a "regression" with `--regress=success`, then a regression is a successful compile (which is *also* equivalent to `--term-new`).
 
-Example:
-```sh
-cargo bisect-rustc \
-    --start=2018-08-14 \
-    --end=2018-10-11 \
-    --regress=success \
-    --term-old "This build does not compile" \
-    --term-new "This build compiles"
-```
-
-See [`--regress`](usage.html#regression-check) for more details.
+There are default terms based on the current `--regress` setting. Customizing the terms is most useful when using [scripting](#testing-with-a-script). For example, in the [Documentation changes](examples/doc-change.md) example, the customized terms can more clearly express the results of the script of whether or not it found what it was looking for in the documentation.
