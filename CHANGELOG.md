@@ -3,7 +3,39 @@
 ## v0.6.9
 
 ### Added
-- Flags `--term-old` and `--term-new` to allow custom messages when bisecting a regression.
+- Added flags `--term-old` and `--term-new` to allow custom messages when bisecting a regression.
+  [#330](https://github.com/rust-lang/cargo-bisect-rustc/pull/330)
+  [#339](https://github.com/rust-lang/cargo-bisect-rustc/pull/339)
+
+
+### Changed
+- Updated dependencies.
+  [#314](https://github.com/rust-lang/cargo-bisect-rustc/pull/314)
+  [#313](https://github.com/rust-lang/cargo-bisect-rustc/pull/313)
+  [#315](https://github.com/rust-lang/cargo-bisect-rustc/pull/315)
+  [#319](https://github.com/rust-lang/cargo-bisect-rustc/pull/319)
+  [#326](https://github.com/rust-lang/cargo-bisect-rustc/pull/326)
+  [#327](https://github.com/rust-lang/cargo-bisect-rustc/pull/327)
+  [#329](https://github.com/rust-lang/cargo-bisect-rustc/pull/329)
+  [#340](https://github.com/rust-lang/cargo-bisect-rustc/pull/340)
+- No longer defaults to cross-compile mode when `--target` is not specified. This more closely matches `cargo`'s behavior, which can affect reproducability.
+  [#323](https://github.com/rust-lang/cargo-bisect-rustc/pull/323)
+- Removed LTO and stripping of building `cargo-bisect-rustc` itself.
+  [#334](https://github.com/rust-lang/cargo-bisect-rustc/pull/334)
+
+### Fixed
+- Don't assume the date before the regressed nightly is the good nightly if there are missing nightlies.
+  [#320](https://github.com/rust-lang/cargo-bisect-rustc/pull/320)
+- Fixed building `cargo-bisect-rustc` itself to avoid unnecessary build-script rebuilds.
+  [#324](https://github.com/rust-lang/cargo-bisect-rustc/pull/324)
+- Fixed doc-change example documentation.
+  [#336](https://github.com/rust-lang/cargo-bisect-rustc/pull/336)
+- Replaced a panic with an error message if a given SHA commit is not from bors using the GitHub backend.
+  [#318](https://github.com/rust-lang/cargo-bisect-rustc/pull/318)
+- Fixed determination of what the latest nightly is when `--end` is not specified, and it is past UTC midnight, but the release process has not yet finished.
+  [#325](https://github.com/rust-lang/cargo-bisect-rustc/pull/325)
+- Fixed panic with `--by-commit` but no `--start`.
+  [#325](https://github.com/rust-lang/cargo-bisect-rustc/pull/325)
 
 ## v0.6.8
 
