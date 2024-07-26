@@ -332,7 +332,7 @@ impl Toolchain {
             // Make rustc report a stable version string derived from the current nightly's version string.
             let version = rustc_version::version_meta().unwrap().semver;
             cmd.env(
-                "RUSTC_FORCE_RUSTC_VERSION",
+                "RUSTC_OVERRIDE_VERSION_STRING",
                 format!("{}.{}.{}", version.major, version.minor, version.patch),
             );
         }
