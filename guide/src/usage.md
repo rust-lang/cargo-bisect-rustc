@@ -8,8 +8,6 @@ cargo bisect-rustc
 
 > For a quick introduction, see the [Tutorial](tutorial.md).
 
-> **Note**: On Windows, due to [an issue](https://github.com/rust-lang/cargo-bisect-rustc/issues/244) with rustup, you will need to execute `cargo-bisect-rustc` with a `-` between `cargo` and `bisect`.
-
 `cargo-bisect-rustc` works by building a Cargo project, and detecting if it succeeds or fails.
 It will download and use nightly Rust toolchains.
 It begins with two nightly boundaries, known as the *start* where the project successfully builds (the *baseline*), and the *end* where it is known to fail (the *regression*).
