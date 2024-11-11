@@ -188,6 +188,15 @@ a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     #[arg(long, help = "Script replacement for `cargo build` command")]
     script: Option<PathBuf>,
 
+    #[arg(
+        long,
+        help = "Run in LLVM FileCheck, using the given path for annotations"
+    )]
+    filecheck: Option<PathBuf>,
+
+    #[arg(long, help = "Path to LLVM FileCheck")]
+    filecheck_path: Option<PathBuf>,
+
     #[arg(long, help = "Do not install cargo [default: install cargo]")]
     without_cargo: bool,
 
