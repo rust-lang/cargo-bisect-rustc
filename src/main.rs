@@ -695,10 +695,11 @@ fn print_final_report(
     eprintln!("Reproduce with:");
     eprintln!("```bash");
     eprint!("cargo bisect-rustc ");
-    for (index, arg) in env::args_os().enumerate() {
-        if index > 1 {
-            eprint!("{} ", arg.to_string_lossy());
-        }
+    for arg in env::args_os()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .skip_while(|arg| arg.ends_with("bisect-rustc"))
+    {
+        eprint!("{arg} ");
     }
     eprintln!();
     eprintln!("```");
