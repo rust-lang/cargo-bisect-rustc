@@ -91,6 +91,13 @@ enum Cargo {
     ```
     cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d \\
       --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
+    ```
+
+    Run `rustc` directly (without involving `cargo`) and use the presence of 'Undefined' in stderr
+    as the definition for a regression:
+    ```
+    cargo bisect-rustc --start=2023-03-31 --end=2023-12-21 --script bash -- -c \\
+      \"rustc -Cpasses=lint -Cinstrument-coverage --crate-type=dylib test.rs 2>&1 | grep Undefined\"
     ```"
 )]
 #[allow(clippy::struct_excessive_bools)]
