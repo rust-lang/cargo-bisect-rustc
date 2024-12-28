@@ -307,6 +307,10 @@ impl Toolchain {
         cmd.stdout(default_stdio());
         cmd.stderr(default_stdio());
 
+        if cfg.args.emit_cmd() {
+            eprintln!("Running `{cmd:?}`");
+        }
+
         let output = match cmd.output() {
             Ok(output) => output,
             Err(err) => {
