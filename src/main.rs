@@ -70,12 +70,6 @@ const REPORT_HEADER: &str = "\
 ==================================================================================";
 
 #[derive(Debug, Parser)]
-#[command(bin_name = "cargo", subcommand_required = true)]
-enum Cargo {
-    BisectRustc(Opts),
-}
-
-#[derive(Debug, Parser)]
 #[command(
     bin_name = "cargo bisect-rustc",
     version,
@@ -397,16 +391,15 @@ impl Config {
 // Application entry point
 fn run() -> anyhow::Result<()> {
     env_logger::try_init()?;
-    let args = match Cargo::try_parse() {
-        Ok(Cargo::BisectRustc(args)) => args,
-        Err(e) => match e.context().next() {
-            None => {
-                Cargo::parse();
-                unreachable!()
-            }
-            _ => Opts::parse(),
-        },
-    };
+    let mut os_args: Vec<_> = std::env::args_os().collect();
+    // This allows both `cargo-bisect-rustc` (with a hyphen) and
+    // `cargo bisect-rustc` (with a space) to work identically.
+    if let Some(command) = os_args.get(1) {
+        if command == "bisect-rustc" {
+            os_args.remove(1);
+        }
+    }
+    let args = Opts::parse_from(os_args);
     let cfg = Config::from_args(args)?;
 
     if let Some(ref bound) = cfg.args.install {

@@ -1,8 +1,130 @@
-Usage: cargo <COMMAND>
+Bisects rustc toolchains with rustup
 
-Commands:
-  bisect-rustc  Bisects rustc toolchains with rustup
-  help          Print this message or the help of the given subcommand(s)
+Usage: cargo bisect-rustc [OPTIONS] [-- <COMMAND_ARGS>...]
+
+Arguments:
+  [COMMAND_ARGS]...
+          Arguments to pass to cargo or the file specified by --script during tests
 
 Options:
-  -h, --help  Print help
+  -a, --alt
+          Download the alt build instead of normal build
+
+      --access <ACCESS>
+          How to access Rust git repository
+          
+          [default: github]
+          [possible values: checkout, github]
+
+      --by-commit
+          Bisect via commit artifacts
+
+  -c, --component <COMPONENTS>
+          additional components to install
+
+      --end <END>
+          Right bound for search (*with* regression). You can use a date (YYYY-MM-DD), git tag name
+          (e.g. 1.58.0) or git commit SHA.
+
+      --force-install
+          Force installation over existing artifacts
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+      --host <HOST>
+          Host triple for the compiler
+          
+          [default: [..]]
+
+      --install <INSTALL>
+          Install the given artifact
+
+      --preserve
+          Preserve the downloaded artifacts
+
+      --preserve-target
+          Preserve the target directory used for builds
+
+      --prompt
+          Manually evaluate for regression with prompts
+
+      --regress <REGRESS>
+          Custom regression definition
+          
+          [default: error]
+
+          Possible values:
+          - error:     Marks test outcome as `Regressed` if and only if the `rustc` process reports
+            a non-success status. This corresponds to when `rustc` has an internal compiler error
+            (ICE) or when it detects an error in the input program. This covers the most common use
+            case for `cargo-bisect-rustc` and is thus the default setting
+          - success:   Marks test outcome as `Regressed` if and only if the `rustc` process reports
+            a success status. This corresponds to when `rustc` believes it has successfully compiled
+            the program. This covers the use case for when you want to bisect to see when a bug was
+            fixed
+          - ice:       Marks test outcome as `Regressed` if and only if the `rustc` process issues a
+            diagnostic indicating that an internal compiler error (ICE) occurred. This covers the
+            use case for when you want to bisect to see when an ICE was introduced on a codebase
+            that is meant to produce a clean error
+          - non-ice:   Marks test outcome as `Regressed` if and only if the `rustc` process does not
+            issue a diagnostic indicating that an internal compiler error (ICE) occurred. This
+            covers the use case for when you want to bisect to see when an ICE was fixed
+          - non-error: Marks test outcome as `Baseline` if and only if the `rustc` process reports
+            error status and does not issue any diagnostic indicating that an internal compiler
+            error (ICE) occurred. This is the use case if the regression is a case where an
+            ill-formed program has stopped being properly rejected by the compiler. (The main
+            difference between this case and `success` is the handling of ICE: `success` assumes
+            that ICE should be considered baseline; `non-error` assumes ICE should be considered a
+            sign of a regression.)
+
+      --script <SCRIPT>
+          Script replacement for `cargo build` command
+
+      --start <START>
+          Left bound for search (*without* regression). You can use a date (YYYY-MM-DD), git tag
+          name (e.g. 1.58.0) or git commit SHA.
+
+  -t, --timeout <TIMEOUT>
+          Assume failure after specified number of seconds (for bisecting hangs)
+
+      --target <TARGET>
+          Cross-compilation target platform
+
+      --term-new <TERM_NEW>
+          Text shown when a test does match the condition requested
+
+      --term-old <TERM_OLD>
+          Text shown when a test fails to match the condition requested
+
+      --test-dir <TEST_DIR>
+          Root directory for tests
+          
+          [default: .]
+
+  -v, --verbose...
+          
+
+  -V, --version
+          Print version
+
+      --with-dev
+          Download rustc-dev [default: no download]
+
+      --with-src
+          Download rust-src [default: no download]
+
+      --without-cargo
+          Do not install cargo [default: install cargo]
+
+Examples:
+    Run a fully automatic nightly bisect doing `cargo check`:
+    ```
+    cargo bisect-rustc --start 2018-07-07 --end 2018-07-30 --test-dir ../my_project/ -- check
+    ```
+
+    Run a PR-based bisect with manual prompts after each run doing `cargo build`:
+    ```
+    cargo bisect-rustc --start 6a1c0637ce44aeea6c60527f4c0e7fb33f2bcd0d /
+      --end 866a713258915e6cbb212d135f751a6a8c9e1c0a --test-dir ../my_project/ --prompt -- build
+    ```
