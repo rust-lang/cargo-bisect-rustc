@@ -226,6 +226,10 @@ impl Opts {
     fn emit_cargo_output(&self) -> bool {
         self.verbosity >= 2
     }
+
+    fn emit_cmd(&self) -> bool {
+        self.verbosity >= 1
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
