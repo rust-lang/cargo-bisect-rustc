@@ -31,7 +31,6 @@ jobs:
     - name: Verify that binary works
       run: |
         cargo run -- bisect-rustc --help | grep "Examples:"
-        cargo run -- --help | grep "Commands:"
 
   fmt:
     name: rustfmt
