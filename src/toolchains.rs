@@ -248,14 +248,24 @@ impl Toolchain {
             }
         });
 
-        let mut cmd = match (script, cfg.args.timeout) {
-            (Some(script), None) => {
+        let target_dir = format!("target-{}", self.rustup_name());
+        // Used in filecheck mode
+        let llir_path = PathBuf::from(&target_dir)
+            .join("debug")
+            .join("deps")
+            .join("output.ll");
+
+        let mut cmd = match (script, cfg.args.timeout, &cfg.args.filecheck) {
+            (Some(_), _, Some(_)) => {
+                panic!("incompatbile options `--script` and `--filecheck` used");
+            }
+            (Some(script), None, None) => {
                 let mut cmd = Command::new(script);
                 cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
                 cmd.args(&cfg.args.command_args);
                 cmd
             }
-            (None, None) => {
+            (None, None, None) => {
                 let mut cmd = Command::new("cargo");
                 cmd.arg(&format!("+{}", self.rustup_name()));
                 if cfg.args.command_args.is_empty() {
@@ -265,7 +275,7 @@ impl Toolchain {
                 }
                 cmd
             }
-            (Some(script), Some(timeout)) => {
+            (Some(script), Some(timeout), None) => {
                 let mut cmd = Command::new("timeout");
                 cmd.arg(timeout.to_string());
                 cmd.arg(script);
@@ -273,7 +283,7 @@ impl Toolchain {
                 cmd.env("RUSTUP_TOOLCHAIN", self.rustup_name());
                 cmd
             }
-            (None, Some(timeout)) => {
+            (None, Some(timeout), None) => {
                 let mut cmd = Command::new("timeout");
                 cmd.arg(timeout.to_string());
                 cmd.arg("cargo");
@@ -285,9 +295,39 @@ impl Toolchain {
                 }
                 cmd
             }
+            (None, None, Some(_)) => {
+                let mut cmd = Command::new("cargo");
+                cmd.arg(&format!("+{}", self.rustup_name()));
+                if cfg.args.command_args.is_empty() {
+                    cmd.arg("rustc")
+                        .arg("--")
+                        .arg("-Copt-level=3")
+                        .arg("-Cdebuginfo=0")
+                        .arg(format!("--emit=llvm-ir={}", llir_path.display()));
+                } else {
+                    cmd.args(&cfg.args.command_args);
+                }
+                cmd
+            }
+            (None, Some(timeout), Some(_)) => {
+                let mut cmd = Command::new("timeout");
+                cmd.arg(timeout.to_string());
+                cmd.arg("cargo");
+                cmd.arg(&format!("+{}", self.rustup_name()));
+                if cfg.args.command_args.is_empty() {
+                    cmd.arg("rustc")
+                        .arg("--")
+                        .arg("-Copt-level=3")
+                        .arg("-Cdebuginfo=0")
+                        .arg(format!("--emit=llvm-ir={}", llir_path.display()));
+                } else {
+                    cmd.args(&cfg.args.command_args);
+                }
+                cmd
+            }
         };
         cmd.current_dir(&cfg.args.test_dir);
-        cmd.env("CARGO_TARGET_DIR", format!("target-{}", self.rustup_name()));
+        cmd.env("CARGO_TARGET_DIR", &target_dir);
         if let Some(target) = &cfg.args.target {
             cmd.env("CARGO_BUILD_TARGET", target);
         }
@@ -323,6 +363,44 @@ impl Toolchain {
             io::stdout().write_all(&output.stdout).unwrap();
             io::stderr().write_all(&output.stderr).unwrap();
         }
+
+        let Some(check_file) = &cfg.args.filecheck else {
+            return output;
+        };
+
+        if !output.status.success() {
+            return output;
+        }
+
+        let filecheck_path = cfg
+            .args
+            .filecheck_path
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("FileCheck"));
+
+        let mut cmd = Command::new(filecheck_path);
+        cmd.arg("--input-file")
+            .arg(
+                PathBuf::from(target_dir)
+                    .join("debug")
+                    .join("deps")
+                    .join("output.ll"),
+            )
+            .arg(check_file);
+
+        cmd.stdout(default_stdio());
+        cmd.stderr(default_stdio());
+        let output = match cmd.output() {
+            Ok(output) => output,
+            Err(err) => {
+                panic!("thiserror::Errored to run {:?}: {:?}", cmd, err);
+            }
+        };
+        if must_capture_output && emit_output {
+            io::stdout().write_all(&output.stdout).unwrap();
+            io::stderr().write_all(&output.stderr).unwrap();
+        }
+
         output
     }
 
