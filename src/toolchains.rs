@@ -257,12 +257,7 @@ impl Toolchain {
             }
             (None, None) => {
                 let mut cmd = Command::new("cargo");
-                cmd.arg(&format!("+{}", self.rustup_name()));
-                if cfg.args.command_args.is_empty() {
-                    cmd.arg("build");
-                } else {
-                    cmd.args(&cfg.args.command_args);
-                }
+                self.set_cargo_args_and_envs(&mut cmd, cfg);
                 cmd
             }
             (Some(script), Some(timeout)) => {
@@ -277,12 +272,7 @@ impl Toolchain {
                 let mut cmd = Command::new("timeout");
                 cmd.arg(timeout.to_string());
                 cmd.arg("cargo");
-                cmd.arg(format!("+{}", self.rustup_name()));
-                if cfg.args.command_args.is_empty() {
-                    cmd.arg("build");
-                } else {
-                    cmd.args(&cfg.args.command_args);
-                }
+                self.set_cargo_args_and_envs(&mut cmd, cfg);
                 cmd
             }
         };
@@ -324,6 +314,32 @@ impl Toolchain {
             io::stderr().write_all(&output.stderr).unwrap();
         }
         output
+    }
+
+    fn set_cargo_args_and_envs(&self, cmd: &mut Command, cfg: &Config) {
+        let rustup_name = format!("+{}", self.rustup_name());
+        cmd.arg(&rustup_name);
+        if cfg.args.command_args.is_empty() {
+            cmd.arg("build");
+        } else {
+            cmd.args(&cfg.args.command_args);
+        }
+        if cfg.args.pretend_to_be_stable && self.is_current_nightly() {
+            // Forbid using features
+            cmd.env(
+                "RUSTFLAGS",
+                format!(
+                    "{} -Zallow-features=",
+                    std::env::var("RUSTFLAGS").unwrap_or_default()
+                ),
+            );
+            // Make rustc report a stable version string derived from the current nightly's version string.
+            let version = rustc_version::version_meta().unwrap().semver;
+            cmd.env(
+                "RUSTC_OVERRIDE_VERSION_STRING",
+                format!("{}.{}.{}", version.major, version.minor, version.patch),
+            );
+        }
     }
 
     pub(crate) fn test(&self, cfg: &Config) -> TestOutcome {
