@@ -26,6 +26,12 @@ Options:
           Right bound for search (*with* regression). You can use a date (YYYY-MM-DD), git tag name
           (e.g. 1.58.0) or git commit SHA.
 
+      --filecheck <FILECHECK>
+          Run in LLVM FileCheck, using the given path for annotations
+
+      --filecheck-path <FILECHECK_PATH>
+          Path to LLVM FileCheck
+
       --force-install
           Force installation over existing artifacts
 

@@ -136,6 +136,27 @@ cargo bisect-rustc --script=./test.sh \
 [issue #53157]: https://github.com/rust-lang/rust/issues/53157
 [issue #55036]: https://github.com/rust-lang/rust/issues/55036
 
+## Testing with LLVM FileCheck
+
+If you want to investigate a regression in codegen, you can use LLVM's FileCheck. You can write a library containing FileCheck annotations:
+
+```rs
+// CHECK-LABEL: @wildcard(
+#[no_mangle]
+pub fn wildcard(a: u16, b: u16, v: u16) -> u16 {
+    // CHECK-NOT: br
+    match (a == v, b == v) {
+        (true, false) => 0,
+        (false, true) => u16::MAX,
+        _ => 1 << 15, // half
+    }
+}
+```
+
+To investigate when `br` stopped being emitted, you can use `cargo-bisect-rustc --start 1.70.0 --filecheck src/lib.rs --preserve --regress success`.
+
+By default, this will compile with `cargo rustc -- -Copt-level=3 -Cdebuginfo=0 --emit=llvm-ir=<target dir>/debug/deps/output.ll`.
+
 ## Custom bisection messages
 
 *Available from v0.6.9*
