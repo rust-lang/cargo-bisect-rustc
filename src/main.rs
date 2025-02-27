@@ -155,6 +155,13 @@ struct Opts {
 
     #[arg(
         long,
+        help = "Pretend to be a stable compiler (disable features, \
+report a version that looks like a stable version)"
+    )]
+    pretend_to_be_stable: bool,
+
+    #[arg(
+        long,
         help = "Left bound for search (*without* regression). You can use \
 a date (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA."
     )]

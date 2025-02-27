@@ -19,6 +19,8 @@ Options:
       --install <INSTALL>       Install the given artifact
       --preserve                Preserve the downloaded artifacts
       --preserve-target         Preserve the target directory used for builds
+      --pretend-to-be-stable    Pretend to be a stable compiler (disable features, report a version
+                                that looks like a stable version)
       --prompt                  Manually evaluate for regression with prompts
       --regress <REGRESS>       Custom regression definition [default: error] [possible values:
                                 error, success, ice, non-ice, non-error]
