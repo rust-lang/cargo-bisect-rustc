@@ -1,0 +1,3 @@
+/rust.git
+/target
+**/*.rs.bk
