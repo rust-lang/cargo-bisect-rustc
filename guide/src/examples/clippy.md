@@ -14,7 +14,7 @@ If the list of changes is too big or nothing is jumping out as a possible culpri
 To bisect a clippy warning, you can upgrade the warning to an error:
 
 ```sh
-cargo bisect-rustc --start=1.84.0 --end=1.85.0 -c clippy -- clippy -- -F clippy::useless_conversion
+cargo bisect-rustc --start=1.84.0 --end=1.85.0 -c clippy -- clippy -- --forbid clippy::useless_conversion
 ```
 
 [`rust-clippy`]: https://github.com/rust-lang/rust-clippy/
