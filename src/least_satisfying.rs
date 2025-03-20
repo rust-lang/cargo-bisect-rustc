@@ -1,7 +1,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub fn least_satisfying<T, P>(slice: &[T], mut predicate: P) -> usize
+// slice is the slice of values to be tested
+// start_offset is the offset of the start of the given `slice`
+//   inside the bigger "true" slice of all the possible values.
+// predicate receives the value from the `slice`, the (estimate) amount of
+//   values left to test, and an estimate of the steps left
+//
+// Returns the index of the earliest element that Satisfies::Yes the predicate.
+pub fn least_satisfying<T, P>(slice: &[T], start_offset: usize, mut predicate: P) -> usize
 where
     T: fmt::Display + fmt::Debug,
     P: FnMut(&T, usize, usize) -> Satisfies,
@@ -11,7 +18,9 @@ where
         let range: usize = lm_yes - rm_no + 1;
         // FIXME: This does not consider unknown_ranges.
         let remaining = range / 2;
-        let estimate = if range < 3 { 0 } else { range.ilog2() as usize };
+        let height_est = (start_offset + 1 + idx).trailing_zeros() as usize;
+        let range_est = range.ilog2() as usize;
+        let estimate = std::cmp::min(height_est, range_est + 2);
         *cache
             .entry(idx)
             .or_insert_with(|| predicate(&slice[idx], remaining, estimate))
@@ -25,13 +34,14 @@ where
     // this should be tested before the call
     let mut lm_yes = slice.len() - 1;
 
-    let mut next = (rm_no + lm_yes) / 2;
-
+    let mut next: usize;
     loop {
         // simple case with no unknown ranges
         if rm_no + 1 == lm_yes {
             return lm_yes;
         }
+        next = midpoint_stable_offset(start_offset, rm_no, lm_yes);
+
         for (left, right) in unknown_ranges.iter().copied() {
             // if we're straddling an unknown range, then pretend it doesn't exist
             if rm_no + 1 == left && right + 1 == lm_yes {
@@ -52,11 +62,9 @@ where
         match r {
             Satisfies::Yes => {
                 lm_yes = next;
-                next = (rm_no + lm_yes) / 2;
             }
             Satisfies::No => {
                 rm_no = next;
-                next = (rm_no + lm_yes) / 2;
             }
             Satisfies::Unknown => {
                 let mut left = next;
@@ -70,7 +78,6 @@ where
                     right += 1;
                 }
                 unknown_ranges.push((left + 1, right - 1));
-                next = left;
             }
         }
     }
@@ -78,11 +85,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::midpoint_stable;
     use super::Satisfies::{No, Unknown, Yes};
     use super::{least_satisfying, Satisfies};
     use quickcheck::{QuickCheck, TestResult};
 
-    fn prop(xs: Vec<Option<bool>>) -> TestResult {
+    fn prop(offset: usize, xs: Vec<Option<bool>>) -> TestResult {
         let mut satisfies_v = xs
             .into_iter()
             .map(std::convert::Into::into)
@@ -98,8 +106,12 @@ mod tests {
                 _ => {}
             }
         }
+        if offset > usize::MAX / 2 {
+            // not interested in testing usize overflows
+            return TestResult::discard();
+        }
 
-        let res = least_satisfying(&satisfies_v, |i, _, _| *i);
+        let res = least_satisfying(&satisfies_v, offset, |i, _, _| *i);
         let exp = first_yes.unwrap();
         TestResult::from_bool(res == exp)
     }
@@ -107,7 +119,7 @@ mod tests {
     #[test]
     fn least_satisfying_1() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes], |i, _, _| *i),
+            least_satisfying(&[No, Unknown, Unknown, No, Yes], 0, |i, _, _| *i),
             4
         );
     }
@@ -115,24 +127,30 @@ mod tests {
     #[test]
     fn least_satisfying_2() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], |i, _, _| *i),
+            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], 0, |i, _, _| *i),
             2
         );
     }
 
     #[test]
     fn least_satisfying_3() {
-        assert_eq!(least_satisfying(&[No, No, No, No, Yes], |i, _, _| *i), 4);
+        assert_eq!(least_satisfying(&[No, No, No, No, Yes], 0, |i, _, _| *i), 4);
     }
 
     #[test]
     fn least_satisfying_4() {
-        assert_eq!(least_satisfying(&[No, No, Yes, Yes, Yes], |i, _, _| *i), 2);
+        assert_eq!(
+            least_satisfying(&[No, No, Yes, Yes, Yes], 0, |i, _, _| *i),
+            2
+        );
     }
 
     #[test]
     fn least_satisfying_5() {
-        assert_eq!(least_satisfying(&[No, Yes, Yes, Yes, Yes], |i, _, _| *i), 1);
+        assert_eq!(
+            least_satisfying(&[No, Yes, Yes, Yes, Yes], 0, |i, _, _| *i),
+            1
+        );
     }
 
     #[test]
@@ -140,6 +158,7 @@ mod tests {
         assert_eq!(
             least_satisfying(
                 &[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes],
+                0,
                 |i, _, _| *i
             ),
             1
@@ -148,21 +167,131 @@ mod tests {
 
     #[test]
     fn least_satisfying_7() {
-        assert_eq!(least_satisfying(&[No, Yes, Unknown, Yes], |i, _, _| *i), 1);
+        assert_eq!(
+            least_satisfying(&[No, Yes, Unknown, Yes], 0, |i, _, _| *i),
+            1
+        );
     }
 
     #[test]
     fn least_satisfying_8() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], |i, _, _| *i),
+            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], 0, |i, _, _| *i),
             5
         );
     }
 
     #[test]
-    fn qc_prop() {
-        QuickCheck::new().quickcheck(prop as fn(_) -> _);
+    fn least_satisfying_9() {
+        assert_eq!(least_satisfying(&[No, Unknown, Yes], 0, |i, _, _| *i), 2);
     }
+
+    #[test]
+    fn qc_prop_least_satisfying() {
+        QuickCheck::new().quickcheck(prop as fn(_, _) -> _);
+    }
+
+    #[test]
+    fn midpoint_test() {
+        assert_eq!(midpoint_stable(1, 3), 2);
+        assert_eq!(midpoint_stable(3, 6), 4);
+        assert_eq!(midpoint_stable(1, 5), 4);
+        assert_eq!(midpoint_stable(2, 5), 4);
+        assert_eq!(midpoint_stable(4, 7), 6);
+        assert_eq!(midpoint_stable(8, 13), 12);
+        assert_eq!(midpoint_stable(8, 16), 12);
+
+        assert_eq!(midpoint_stable(25, 27), 26);
+        assert_eq!(midpoint_stable(25, 28), 26);
+        assert_eq!(midpoint_stable(25, 29), 28);
+        assert_eq!(midpoint_stable(33, 65), 64);
+    }
+
+    #[test]
+    fn qc_prop_midpoint_stable() {
+        fn prop_midpoint(left: usize, right: usize) -> TestResult {
+            if left > usize::MAX / 2 || right > usize::MAX / 2 {
+                return TestResult::discard();
+            }
+            if left == 0 {
+                return TestResult::discard();
+            }
+            if left + 1 >= right {
+                return TestResult::discard();
+            }
+            let mid = midpoint_stable(left, right);
+            // check that it's in range
+            if mid <= left || right <= mid {
+                return TestResult::failed();
+            }
+            // check that there are no less-deep candidates in range
+            let mid_height = mid.trailing_zeros();
+            let step = 1 << (mid_height + 1);
+            let mut probe = left & !(step - 1);
+            while probe < right {
+                if probe > left {
+                    return TestResult::failed();
+                }
+                probe += step;
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(prop_midpoint as fn(_, _) -> _);
+    }
+}
+
+// see documentation of `midpoint_stable` below
+fn midpoint_stable_offset(start_offset: usize, left: usize, right: usize) -> usize {
+    // return (left + right)/2;
+    // The implementation of `midpoint_stable` treats the slice as a binary tree
+    // with the assumption that the slice index starts at one, not zero
+    // (i.e. it assumes that both 1 and 3 are child nodes of 2, and 0 is not present
+    // in the tree at all).
+    // But we don't want to bubble this requirement up the stack since it's a bit
+    // counterintuitive and hard to explain, so just bump it here instead
+    let start_offset = start_offset + 1;
+    midpoint_stable(left + start_offset, right + start_offset) - start_offset
+}
+/// Returns a "stabilized midpoint" between the two slice indices (endpoints excluded).
+///
+/// That is, returns such an index that is likely to be reused by future bisector invocations.
+/// In practice, this reinterprets the slice as a "complete" (i.e. left-heavy) binary tree,
+/// and finds the lowest-depth node between the two indices. This ensures that low-depth
+/// nodes are more likely to be tried first (and thus reused) regardless of the initial search boundaries,
+/// while still keeping the "binary" in "binary search" and completing the task in O(log_2(n)) steps
+fn midpoint_stable(left: usize, right: usize) -> usize {
+    assert!(
+        (right - left) > 1,
+        "midpoint_stable called with consecutive values. Can't handle this, there's no midpoint. {:?} vs {:?}",
+        left,
+        right
+    );
+    // If we only have a single candidate - return it
+    if left + 1 == right - 1 {
+        return left + 1;
+    }
+
+    // If left and right have the same binary digits up to nth place,
+    //   left  = 0bxxx0yyyy;
+    //   right = 0bxxx1zzzz;
+    // then we have a number of the form
+    //   mid   = 0bxxx10000;
+    // which has the least possible depth (as indicated by the amount of trailing zeroes)
+    // of all the numbers between left (exclusive) and right (inclusive).
+    // The following code constructs said number (with the exception that it excludes the right bound)
+    let diff = isolate_most_significant_one(left ^ (right - 1));
+    assert!(left & diff == 0);
+    assert!((right - 1) & diff > 0);
+    // grab the high bits from left_next, force 1 where it should be, and zero out the lower bits.
+    let mask = !(diff - 1);
+    let mid = (mask & left) | diff;
+    return mid;
+}
+
+// Implementation copy-pasted from std nightly `feature(isolate_most_significant_one)`
+// https://github.com/rust-lang/rust/pull/136910
+const fn isolate_most_significant_one(x: usize) -> usize {
+    x & (((1 as usize) << (<usize>::BITS - 1)).wrapping_shr(x.leading_zeros()))
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

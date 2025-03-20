@@ -60,6 +60,8 @@ pub struct Author {
 /// artifacts of this commit itself is no longer available, so this may not be entirely useful;
 /// however, it does limit the amount of commits somewhat.
 const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
+/// The earliest known date with an available nightly
+const EPOCH_DATE: chrono::NaiveDate = NaiveDate::from_ymd_opt(2015, 01, 03).unwrap();
 
 const REPORT_HEADER: &str = "\
 ==================================================================================
@@ -815,8 +817,18 @@ impl Config {
         }
     }
 
-    fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
-        least_satisfying(toolchains, |t, remaining, estimate| {
+    fn bisect_to_regression(
+        &self,
+        toolchains: &[Toolchain],
+        dl_spec: &DownloadParams,
+    ) -> usize {
+        let start_index = match &toolchains[0].spec {
+            ToolchainSpec::Ci { .. } => 0,
+            ToolchainSpec::Nightly { date } => {
+                (*date - EPOCH_DATE).num_days() as usize
+            }
+        };
+        least_satisfying(toolchains, start_index, |t, remaining, estimate| {
             eprintln!(
                 "{remaining} versions remaining to test after this (roughly {estimate} steps)"
             );
