@@ -74,7 +74,7 @@ By default, `cargo-bisect-rustc` runs `cargo build`.
 You can change which `cargo` command is run by passing additional arguments after `--`:
 
 ```sh
-cargo bisect rustc -- test --test mytest
+cargo bisect-rustc -- test --test mytest
 ```
 
 ## Scripting
