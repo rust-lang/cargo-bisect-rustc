@@ -817,16 +817,10 @@ impl Config {
         }
     }
 
-    fn bisect_to_regression(
-        &self,
-        toolchains: &[Toolchain],
-        dl_spec: &DownloadParams,
-    ) -> usize {
+    fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
         let start_index = match &toolchains[0].spec {
             ToolchainSpec::Ci { .. } => 0,
-            ToolchainSpec::Nightly { date } => {
-                (*date - EPOCH_DATE).num_days() as usize
-            }
+            ToolchainSpec::Nightly { date } => (*date - EPOCH_DATE).num_days() as usize,
         };
         least_satisfying(toolchains, start_index, |t, remaining, estimate| {
             eprintln!(
