@@ -16,11 +16,28 @@ where
     let mut cache = BTreeMap::new();
     let mut predicate = |idx: usize, rm_no, lm_yes| {
         let range: usize = lm_yes - rm_no + 1;
-        // FIXME: This does not consider unknown_ranges.
         let remaining = range / 2;
-        let height_est = (start_offset + 1 + idx).trailing_zeros() as usize;
-        let range_est = range.ilog2() as usize;
-        let estimate = std::cmp::min(height_est, range_est + 2);
+
+        let estimate;
+        {
+            // The estimate of the remaining step count based on the range of the values left to check.
+            // Can be an underestimate if the (future) midpoint(s) don't land close enough to the
+            // true middle of the bisected ranges, but usually by no more than 2.
+            let range_est = range.ilog2() as usize;
+            // The estimate of the remaining step count based on the height of the current idx in
+            // the overall binary tree. This is tailored to the specific midpoint selection strategy
+            // currently used, and relies on the fact that each step of the way we get at least
+            // one more step away from the root of the binary tree.
+            // Can arbitrarily overestimate the number of steps (think a short bisection range centered
+            // around the tree root).
+            // Can also *under*estimate the number of steps if the `idx` was not actually
+            // a direct result of `midpoint_stable_offset`, but rather tweaked slightly to work around
+            // unknown ranges.
+            let height_est = (start_offset + 1 + idx).trailing_zeros() as usize;
+            // Real estimate. Combines our best guesses via the two above methods. Can still be somewhat
+            // off in presence of unknown ranges.
+            estimate = height_est.clamp(range_est, range_est + 2);
+        }
         *cache
             .entry(idx)
             .or_insert_with(|| predicate(&slice[idx], remaining, estimate))
