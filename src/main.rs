@@ -29,7 +29,7 @@ mod toolchains;
 
 use crate::bounds::{Bound, Bounds};
 use crate::github::get_commit;
-use crate::least_satisfying::{least_satisfying, Satisfies};
+use crate::least_satisfying::{least_satisfying, MidpointSelection, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
     parse_to_naive_date, DownloadError, DownloadParams, InstallError, TestOutcome, Toolchain,
@@ -818,11 +818,13 @@ impl Config {
     }
 
     fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
-        let start_index = match &toolchains[0].spec {
-            ToolchainSpec::Ci { .. } => 0,
-            ToolchainSpec::Nightly { date } => (*date - EPOCH_DATE).num_days() as usize,
+        let midpoint = match &toolchains[0].spec {
+            ToolchainSpec::Ci { .. } => MidpointSelection::Naive,
+            ToolchainSpec::Nightly { date } => MidpointSelection::Stabilized {
+                start_offset: (*date - EPOCH_DATE).num_days() as usize,
+            },
         };
-        least_satisfying(toolchains, start_index, |t, remaining, estimate| {
+        least_satisfying(toolchains, midpoint, |t, remaining, estimate| {
             eprintln!(
                 "{remaining} versions remaining to test after this (roughly {estimate} steps)"
             );

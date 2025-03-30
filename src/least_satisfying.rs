@@ -1,14 +1,13 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-// slice is the slice of values to be tested
-// start_offset is the offset of the start of the given `slice`
-//   inside the bigger "true" slice of all the possible values.
-// predicate receives the value from the `slice`, the (estimate) amount of
-//   values left to test, and an estimate of the steps left
-//
-// Returns the index of the earliest element that Satisfies::Yes the predicate.
-pub fn least_satisfying<T, P>(slice: &[T], start_offset: usize, mut predicate: P) -> usize
+// Returns the index of the earliest element of `slice` for which `predicate` returns Satisfies::Yes,
+// assuming that all elements with `Satisfies::No` precede those with `Satisfies::Yes`.
+pub fn least_satisfying<T, P>(
+    slice: &[T],
+    midpoint_selection: MidpointSelection,
+    mut predicate: P,
+) -> usize
 where
     T: fmt::Display + fmt::Debug,
     P: FnMut(&T, usize, usize) -> Satisfies,
@@ -24,19 +23,24 @@ where
             // Can be an underestimate if the (future) midpoint(s) don't land close enough to the
             // true middle of the bisected ranges, but usually by no more than 2.
             let range_est = range.ilog2() as usize;
-            // The estimate of the remaining step count based on the height of the current idx in
-            // the overall binary tree. This is tailored to the specific midpoint selection strategy
-            // currently used, and relies on the fact that each step of the way we get at least
-            // one more step away from the root of the binary tree.
-            // Can arbitrarily overestimate the number of steps (think a short bisection range centered
-            // around the tree root).
-            // Can also *under*estimate the number of steps if the `idx` was not actually
-            // a direct result of `midpoint_stable_offset`, but rather tweaked slightly to work around
-            // unknown ranges.
-            let height_est = (start_offset + 1 + idx).trailing_zeros() as usize;
-            // Real estimate. Combines our best guesses via the two above methods. Can still be somewhat
-            // off in presence of unknown ranges.
-            estimate = height_est.clamp(range_est, range_est + 2);
+            match midpoint_selection {
+                MidpointSelection::Naive => estimate = range_est,
+                MidpointSelection::Stabilized { start_offset } => {
+                    // The estimate of the remaining step count based on the height of the current idx in
+                    // the overall binary tree. This is tailored to the specific midpoint selection strategy
+                    // currently used, and relies on the fact that each step of the way we get at least
+                    // one more step away from the root of the binary tree.
+                    // Can arbitrarily overestimate the number of steps (think a short bisection range centered
+                    // around the tree root).
+                    // Can also *under*estimate the number of steps if the `idx` was not actually
+                    // a direct result of `midpoint_stable_offset`, but rather tweaked slightly to work around
+                    // unknown ranges.
+                    let height_est = (start_offset + 1 + idx).trailing_zeros() as usize;
+                    // Real estimate. Combines our best guesses via the two above methods. Can still be somewhat
+                    // off in presence of unknown ranges.
+                    estimate = height_est.clamp(range_est, range_est + 2)
+                }
+            };
         }
         *cache
             .entry(idx)
@@ -57,7 +61,12 @@ where
         if rm_no + 1 == lm_yes {
             return lm_yes;
         }
-        next = midpoint_stable_offset(start_offset, rm_no, lm_yes);
+        next = match midpoint_selection {
+            MidpointSelection::Naive => (rm_no + lm_yes) / 2,
+            MidpointSelection::Stabilized { start_offset } => {
+                midpoint_stable_offset(start_offset, rm_no, lm_yes)
+            }
+        };
 
         for (left, right) in unknown_ranges.iter().copied() {
             // if we're straddling an unknown range, then pretend it doesn't exist
@@ -100,14 +109,27 @@ where
     }
 }
 
+// Governs the way a midpoint element is selected.
+#[derive(Clone, Copy)]
+pub enum MidpointSelection {
+    // Midpoint is simple `(start + end) / 2`
+    // Shall achieve the bisection in the least steps possible.
+    Naive,
+    // Midpoint would aim to be reused between different bisections,
+    // regardless of the initial bounds selection.
+    // The `start_offset` is the offset of the first element of the slice
+    // in a (hypothetical) "overall" array of "all the elements possible".
+    Stabilized { start_offset: usize },
+}
+
 #[cfg(test)]
 mod tests {
-    use super::midpoint_stable;
     use super::Satisfies::{No, Unknown, Yes};
     use super::{least_satisfying, Satisfies};
+    use super::{midpoint_stable, MidpointSelection};
     use quickcheck::{QuickCheck, TestResult};
 
-    fn prop(offset: usize, xs: Vec<Option<bool>>) -> TestResult {
+    fn prop(midpoint_sel: Option<usize>, xs: Vec<Option<bool>>) -> TestResult {
         let mut satisfies_v = xs
             .into_iter()
             .map(std::convert::Into::into)
@@ -123,12 +145,17 @@ mod tests {
                 _ => {}
             }
         }
-        if offset > usize::MAX / 2 {
+        if midpoint_sel.unwrap_or(0) > usize::MAX / 2 {
             // not interested in testing usize overflows
             return TestResult::discard();
         }
 
-        let res = least_satisfying(&satisfies_v, offset, |i, _, _| *i);
+        let midpoint = match midpoint_sel {
+            None => MidpointSelection::Naive,
+            Some(x) => MidpointSelection::Stabilized { start_offset: x },
+        };
+
+        let res = least_satisfying(&satisfies_v, midpoint, |i, _, _| *i);
         let exp = first_yes.unwrap();
         TestResult::from_bool(res == exp)
     }
@@ -136,7 +163,11 @@ mod tests {
     #[test]
     fn least_satisfying_1() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Unknown, No, Yes], 0, |i, _, _| *i),
+            least_satisfying(
+                &[No, Unknown, Unknown, No, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
             4
         );
     }
@@ -144,20 +175,35 @@ mod tests {
     #[test]
     fn least_satisfying_2() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, Yes, Unknown, Yes], 0, |i, _, _| *i),
+            least_satisfying(
+                &[No, Unknown, Yes, Unknown, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
             2
         );
     }
 
     #[test]
     fn least_satisfying_3() {
-        assert_eq!(least_satisfying(&[No, No, No, No, Yes], 0, |i, _, _| *i), 4);
+        assert_eq!(
+            least_satisfying(
+                &[No, No, No, No, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
+            4
+        );
     }
 
     #[test]
     fn least_satisfying_4() {
         assert_eq!(
-            least_satisfying(&[No, No, Yes, Yes, Yes], 0, |i, _, _| *i),
+            least_satisfying(
+                &[No, No, Yes, Yes, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
             2
         );
     }
@@ -165,7 +211,11 @@ mod tests {
     #[test]
     fn least_satisfying_5() {
         assert_eq!(
-            least_satisfying(&[No, Yes, Yes, Yes, Yes], 0, |i, _, _| *i),
+            least_satisfying(
+                &[No, Yes, Yes, Yes, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
             1
         );
     }
@@ -175,7 +225,7 @@ mod tests {
         assert_eq!(
             least_satisfying(
                 &[No, Yes, Yes, Unknown, Unknown, Yes, Unknown, Yes],
-                0,
+                MidpointSelection::Naive,
                 |i, _, _| *i
             ),
             1
@@ -185,7 +235,11 @@ mod tests {
     #[test]
     fn least_satisfying_7() {
         assert_eq!(
-            least_satisfying(&[No, Yes, Unknown, Yes], 0, |i, _, _| *i),
+            least_satisfying(
+                &[No, Yes, Unknown, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
             1
         );
     }
@@ -193,14 +247,21 @@ mod tests {
     #[test]
     fn least_satisfying_8() {
         assert_eq!(
-            least_satisfying(&[No, Unknown, No, No, Unknown, Yes, Yes], 0, |i, _, _| *i),
+            least_satisfying(
+                &[No, Unknown, No, No, Unknown, Yes, Yes],
+                MidpointSelection::Naive,
+                |i, _, _| *i
+            ),
             5
         );
     }
 
     #[test]
     fn least_satisfying_9() {
-        assert_eq!(least_satisfying(&[No, Unknown, Yes], 0, |i, _, _| *i), 2);
+        assert_eq!(
+            least_satisfying(&[No, Unknown, Yes], MidpointSelection::Naive, |i, _, _| *i),
+            2
+        );
     }
 
     #[test]
