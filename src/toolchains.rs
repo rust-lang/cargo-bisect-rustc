@@ -208,7 +208,7 @@ impl Toolchain {
             })?;
         }
 
-        fs::rename(tmpdir.into_path(), dest).map_err(InstallError::Move)
+        fs::rename(tmpdir.keep(), dest).map_err(InstallError::Move)
     }
 
     pub(crate) fn remove(&self, dl_params: &DownloadParams) -> io::Result<()> {
