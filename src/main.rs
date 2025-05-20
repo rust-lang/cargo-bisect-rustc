@@ -696,7 +696,7 @@ fn format_commit_line(commit_desc: &str, terse: bool) -> String {
 fn format_commit_range_report(commits: &[Commit], range_desc: &str) -> String {
     let mut report_lines: Vec<String> = vec![];
     report_lines.push(format!(
-        "<details><summary>\nRegression in {range_desc}. PRs in range:  </summary>\n\n```"
+        "<details><summary>\nRegression in {range_desc}. PRs in range:  </summary>\n\n```md"
     ));
     // normally we want to display a verbose report of contained PRs,
     // but that might explode the terminal if the user explicitly set start/end commit SHAs
