@@ -1,5 +1,10 @@
 # Changelog
 
+## Dev
+
+### Changed
+- Unrolled CI builds have moved from the `rust-lang-ci/rust` repository to the `rust-lang/rust` repository.
+
 ## v0.6.9
 
 ### Added
