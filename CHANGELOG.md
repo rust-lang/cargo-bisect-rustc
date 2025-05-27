@@ -1,9 +1,29 @@
 # Changelog
 
-## Dev
+## v0.6.10
+[v0.6.9...v0.6.10](https://github.com/rust-lang/cargo-bisect-rustc/compare/v0.6.9...v0.6.10)
+
+### Added
+- Added the `--pretend-to-be-stable` flag.
+  [#335](https://github.com/rust-lang/cargo-bisect-rustc/pull/335)
+- Documented how to bisect an individual clippy warning.
+  [#368](https://github.com/rust-lang/cargo-bisect-rustc/pull/368)
+- Documented another example of a hanging compilation.
+  [#374](https://github.com/rust-lang/cargo-bisect-rustc/pull/374)
 
 ### Changed
+- Print the command that is run with `--verbose`.
+  [#361](https://github.com/rust-lang/cargo-bisect-rustc/pull/361)
+- Updated all dependencies.
+  [#383](https://github.com/rust-lang/cargo-bisect-rustc/pull/383)
 - Unrolled CI builds have moved from the `rust-lang-ci/rust` repository to the `rust-lang/rust` repository.
+  [#381](https://github.com/rust-lang/cargo-bisect-rustc/pull/381)
+
+### Fixed
+- Fixed printing of args in the final report.
+  [#356](https://github.com/rust-lang/cargo-bisect-rustc/pull/356)
+- Fixed so that `cargo-bisect-rustc` can be run with the hyphen after `cargo` or a space.
+  [#362](https://github.com/rust-lang/cargo-bisect-rustc/pull/362)
 
 ## v0.6.9
 
