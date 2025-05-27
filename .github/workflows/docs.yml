@@ -13,7 +13,7 @@ jobs:
       contents: write  # for Git to git push
     runs-on: ubuntu-latest
     env:
-      MDBOOK_VERSION: 0.4.28
+      MDBOOK_VERSION: 0.4.51
     steps:
     - uses: actions/checkout@v4
       with:
