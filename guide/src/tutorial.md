@@ -49,10 +49,14 @@ It will do a binary search between the start and end range to find exactly where
 
 [`--regress`]: usage.md#regression-check
 
-In our example, in just a few steps, we can we find that it stopped working on `nightly-2018-07-30`.
+> **Note**: Additional ways to specify boundaries include stable versions and git commit hashes. See the [Bisection boundaries] chapter for more details on setting these options.
+
+[Bisection boundaries]: boundaries.md
+
+In our example, in just a few steps, we can find that it stopped working on `nightly-2018-07-30`.
 
 If the regression is recent enough, then it will print out a list of PRs that were committed on that date.
-In this particular example, it is too old, so we'll need to manually inspect the git log to see which PR's were merged.
+In this particular example, it is too old, so we'll need to manually inspect the git log to see which PRs were merged.
 
 If the nightly was within the last 167 days, then `cargo-bisect-rustc` will then start bisecting those individual PRs.
 
