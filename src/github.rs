@@ -82,6 +82,9 @@ fn headers() -> Result<HeaderMap, InvalidHeaderValue> {
     Ok(headers)
 }
 
+/// Lookup information about the given commit reference from GitHub.
+/// If it is a commit forked from the "mainline" git history (e.g. a stable tag
+/// like `1.88.0`), returns the merge base of the given commit reference.
 pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
     let url = CommitDetailsUrl { sha }.url();
     let client = Client::builder().default_headers(headers()?).build()?;
