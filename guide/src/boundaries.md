@@ -29,6 +29,8 @@ cargo bisect-rustc --start=2018-08-14 --end=2018-10-11
 
 If the nightly with the regression was within the past 167 days, then it will automatically start bisecting the individual PRs merged on that day using [Git commit boundaries](#git-commit-boundaries).
 
+> **Note**: A pitfall is that if you use something like `rustc +nightly --version` to figure out the version you are on it will often identify a date that is one day early from the nightly toolchain version. E.g. `nightly-2025-07-19` will say `2025-07-18`, since that is when the most recent commit was merged, even though the toolchain was published on the 19th.
+
 ## Git commit boundaries
 
 You can pass the particular git commit hash of a PR as a boundary.
