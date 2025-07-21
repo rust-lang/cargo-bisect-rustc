@@ -13,6 +13,8 @@ pub(crate) trait RustRepositoryAccessor {
 
     /// Looks up commit associated with `commit_ref`, which can be either a sha
     /// or a more general reference like "origin/master".
+    /// If `commit_ref` is a commit forked from the "mainline" git history
+    /// (e.g. a stable tag like `1.88.0`), returns the merge base of the given commit reference.
     fn commit(&self, commit_ref: &str) -> anyhow::Result<Commit>;
 
     /// Looks up a series of commits ending with `end_sha`; the resulting series
