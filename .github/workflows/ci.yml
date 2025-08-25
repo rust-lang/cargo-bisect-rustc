@@ -1,0 +1,48 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - 'dependabot/**'
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+        rust: ["stable"]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+    - uses: Swatinem/rust-cache@v2
+    - name: Build
+      run: cargo test --no-run
+    - name: Test
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: cargo test
+    - name: Verify that binary works
+      run: |
+        cargo run -- bisect-rustc --help | grep "Examples:"
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Run rustfmt check
+        run: |
+          cargo fmt --version
+          cargo fmt --check || (echo "Please reformat your code with 'cargo fmt' (version $(cargo fmt --version))"; false)
