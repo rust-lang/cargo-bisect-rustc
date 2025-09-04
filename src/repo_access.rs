@@ -12,7 +12,7 @@ pub(crate) trait RustRepositoryAccessor {
     }
 
     /// Looks up commit associated with `commit_ref`, which can be either a sha
-    /// or a more general reference like "origin/master".
+    /// or a more general reference like "origin/HEAD".
     /// If `commit_ref` is a commit forked from the "mainline" git history
     /// (e.g. a stable tag like `1.88.0`), returns the merge base of the given commit reference.
     fn commit(&self, commit_ref: &str) -> anyhow::Result<Commit>;
@@ -33,7 +33,7 @@ impl RustRepositoryAccessor for AccessViaLocalGit {
         git::get_commit(commit_ref)
     }
     fn commits(&self, start_sha: &str, end_sha: &str) -> anyhow::Result<Vec<Commit>> {
-        let end_sha = if end_sha == "origin/master" {
+        let end_sha = if end_sha == "HEAD" {
             "FETCH_HEAD"
         } else {
             end_sha

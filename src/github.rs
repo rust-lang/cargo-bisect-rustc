@@ -224,16 +224,8 @@ impl ToUrl for CommitsUrl<'_> {
 
 impl ToUrl for CommitDetailsUrl<'_> {
     fn url(&self) -> String {
-        // "origin/master" is set as `sha` when there is no `--end=` definition
-        // specified on the command line.  We define the GitHub master branch
-        // HEAD commit as the end commit in this case
-        let reference = if self.sha == "origin/master" {
-            "master"
-        } else {
-            self.sha
-        };
-
-        format!("https://api.github.com/repos/{OWNER}/{REPO}/compare/master...{reference}")
+        let reference = self.sha;
+        format!("https://api.github.com/repos/{OWNER}/{REPO}/compare/HEAD...{reference}")
     }
 }
 

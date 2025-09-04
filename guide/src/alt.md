@@ -24,6 +24,6 @@ You will need to specify `--by-commit` (or use a hash in the `--start` or `--end
 cargo bisect-rustc --alt --by-commit
 ```
 
-[`config.toml` docs]: https://github.com/rust-lang/rust/blob/master/config.example.toml
+[`config.toml` docs]: https://github.com/rust-lang/rust/blob/HEAD/config.example.toml
 [`ci/run.sh`]: https://github.com/rust-lang/rust/blob/c0b6ffaaea3ebdf5f7a58fc4cf7ee52c91077fb9/src/ci/run.sh#L99-L105
 [`ci.yml`]: https://github.com/rust-lang/rust/blob/HEAD/src/ci/github-actions/ci.yml
