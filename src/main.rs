@@ -1000,7 +1000,7 @@ impl Config {
             if c.committer.name != BORS_AUTHOR {
                 bail!(
                     "Expected author {} to be {BORS_AUTHOR} for {}.\n \
-                     Make sure specified commits are on the master branch \
+                     Make sure specified commits are on the default branch \
                      and refer to a bors merge commit!",
                     c.committer.name,
                     c.sha
