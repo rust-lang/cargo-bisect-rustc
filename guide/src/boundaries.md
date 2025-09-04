@@ -45,11 +45,11 @@ cargo bisect-rustc \
 
 There are several ways to determine the SHA-1 hash for a PR.
 
-- On the PR itself, you should see a message like "bors merged commit c50c62d into `rust-lang:master`".
+- On the PR itself, you should see a message like "bors merged commit c50c62d into `rust-lang:<default-branch>`".
   You can copy that hash to use as a boundary.
   If the PR was merged as part of a rollup, you will need to use the hash of the rollup instead.
   You'll need to look through the PR messages to see if the PR was mentioned from a rollup PR.
-- In the rust repo, run `git log --first-parent upstream/master` (where `upstream` is your origin name for `rust-lang/rust`).
+- In the rust repo, run `git log --first-parent upstream/HEAD` (where `upstream` is your origin name for `rust-lang/rust`).
   This will show all the top-level commits.
   You can then search for your PR.
 

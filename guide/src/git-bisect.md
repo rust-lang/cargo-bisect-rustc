@@ -3,7 +3,7 @@
 There are some rare cases where you may need to build `rustc` with custom options, or otherwise work around issues with pre-built compilers not being available.
 For this you can use [`git bisect`] to build the compiler locally.
 
-It can be helpful to use the `--first-parent` option so that it only bisects the merge commits directly reachable on the master branch.
+It can be helpful to use the `--first-parent` option so that it only bisects the merge commits directly reachable on the default branch.
 Otherwise the bisecting may land on intermediate commits from within a PR which may not build or test correctly.
 
 To start the bisection, specifying the boundaries where the bisection will start:
