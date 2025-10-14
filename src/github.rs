@@ -180,11 +180,6 @@ impl CommitsQuery<'_> {
             }
         }
 
-        eprintln!(
-            "get_commits_between returning commits, len: {}",
-            commits.len()
-        );
-
         // reverse to obtain chronological order
         commits.reverse();
         Ok(commits)
