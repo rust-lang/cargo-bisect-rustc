@@ -55,8 +55,6 @@ Options:
 
       --regress <REGRESS>
           Custom regression definition
-          
-          [default: error]
 
           Possible values:
           - error:     Marks test outcome as `Regressed` if and only if the `rustc` process reports
@@ -81,6 +79,8 @@ Options:
             difference between this case and `success` is the handling of ICE: `success` assumes
             that ICE should be considered baseline; `non-error` assumes ICE should be considered a
             sign of a regression.)
+          
+          [default: error]
 
       --script <SCRIPT>
           Script replacement for `cargo build` command
