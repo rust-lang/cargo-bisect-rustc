@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.11
+[v0.6.10...v0.6.11](https://github.com/rust-lang/cargo-bisect-rustc/compare/v0.6.10...v0.6.11)
+
+### Changed
+
+- Some improvements to the new user tutorial.
+  [#387](https://github.com/rust-lang/cargo-bisect-rustc/pull/387)
+- Updated dependencies.
+  [#400](https://github.com/rust-lang/cargo-bisect-rustc/pull/400)
+
+### Fixed
+
+- Removed hard-coded dependency on master.
+  [#392](https://github.com/rust-lang/cargo-bisect-rustc/pull/392)
+
 ## v0.6.10
 [v0.6.9...v0.6.10](https://github.com/rust-lang/cargo-bisect-rustc/compare/v0.6.9...v0.6.10)
 
