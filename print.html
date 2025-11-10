@@ -1,0 +1,876 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>cargo-bisect-rustc</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">cargo-bisect-rustc</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/rust-lang/cargo-bisect-rustc/tree/master/guide/src" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>The <a href="https://github.com/rust-lang/cargo-bisect-rustc"><code>cargo-bisect-rustc</code></a> tool makes it super easy to find exactly when behavior has regressed in rustc.
+It automatically downloads rustc artifacts and tests them against a project you provide until it finds the regression.</p>
+<p>The <a href="installation.html">Installation</a> chapter shows how to install <code>cargo-bisect-rustc</code>.
+For a quick introduction, see the <a href="tutorial.html">Tutorial</a>.
+Otherwise, start at the <a href="usage.html">Basic usage</a> chapter to learn how <code>cargo-bisect-rustc</code> works.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<p>The basic method for installing <code>cargo-bisect-rustc</code> is:</p>
+<pre><code class="language-sh">cargo install cargo-bisect-rustc
+</code></pre>
+<p>Additional options are described below.</p>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<p>Besides having a working Rust installation, you may need a few other things installed on your system:</p>
+<ul>
+<li>Unix:
+<ul>
+<li>pkg-config</li>
+<li>OpenSSL (<code>libssl-dev</code> on Ubuntu, <code>openssl-devel</code> on Fedora or Alpine)</li>
+</ul>
+</li>
+<li>macOS:
+<ul>
+<li>OpenSSL (<a href="https://brew.sh/">homebrew</a> is recommended to install the <code>openssl</code> package)</li>
+</ul>
+</li>
+<li><a href="https://rustup.rs/">rustup</a></li>
+</ul>
+<p>If you’re having trouble using the system OpenSSL installation, it can be built from scratch.
+The following will enable the vendored OpenSSL build:</p>
+<pre><code class="language-sh">cargo install cargo-bisect-rustc --features git2/vendored-openssl
+</code></pre>
+<p>Beware that this also requires <code>perl</code> and <code>make</code> to be installed.</p>
+<h2 id="rust_src_repo"><a class="header" href="#rust_src_repo"><code>RUST_SRC_REPO</code></a></h2>
+<p><code>cargo-bisect-rustc</code> needs to access the git log of the rust repo.
+You can set the default location of that when installing it:</p>
+<pre><code class="language-sh">RUST_SRC_REPO=/path/to/rust cargo install cargo-bisect-rustc
+</code></pre>
+<p>See <a href="rust-src-repo.html">Rust source repo</a> for more about configuring how <code>cargo-bisect-rustc</code> retrieves this information.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="basic-usage"><a class="header" href="#basic-usage">Basic usage</a></h1>
+<p>Using <code>cargo-bisect-rustc</code> simply involves running it inside a Cargo project that reproduces the regression:</p>
+<pre><code class="language-sh">cargo bisect-rustc
+</code></pre>
+<blockquote>
+<p>For a quick introduction, see the <a href="tutorial.html">Tutorial</a>.</p>
+</blockquote>
+<p><code>cargo-bisect-rustc</code> works by building a Cargo project, and detecting if it succeeds or fails.
+It will download and use nightly Rust toolchains.
+It begins with two nightly boundaries, known as the <em>start</em> where the project successfully builds (the <em>baseline</em>), and the <em>end</em> where it is known to fail (the <em>regression</em>).
+It will then do a binary search between those dates to find the nightly where the project started to fail.</p>
+<p>Once it finds the nightly where it started to fail, <code>cargo-bisect-rustc</code> will then try to find the individual PR where it regressed.
+The Rust project keeps the builds of every merged PR for the last 167 days.
+If the nightly is within that range, then it will bisect between those PRs.</p>
+<p>And even further, if the regression is in a <a href="https://forge.rust-lang.org/release/rollups.html">rollup PR</a>, then it will bisect the individual PRs within the rollup.
+This final bisection is only available for <code>x86_64-unknown-linux-gnu</code> since it is using the builds made for the <a href="https://perf.rust-lang.org/">rustc performance tracker</a>.</p>
+<h2 id="rust-src-repo"><a class="header" href="#rust-src-repo">Rust src repo</a></h2>
+<p><code>cargo-bisect-rustc</code> needs to read the git log of the <a href="https://github.com/rust-lang/rust/"><code>rust-lang/rust</code></a> repo in order to scan individual commits.
+See the <a href="rust-src-repo.html">Rust src repo</a> chapter for details on how to configure how it finds the git repo.</p>
+<h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
+<p>Without setting any options, <code>cargo-bisect-rustc</code> will try to automatically find the <em>start</em> where the build succeeds and the <em>end</em> where it fails.
+This can take some time, depending on how far back it needs to scan.
+It is recommended to use the <code>--start</code> and <code>--end</code> CLI options to tell it where the boundaries are.</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=2022-11-01 --end=2023-02-14
+</code></pre>
+<p>See the <a href="boundaries.html">Bisection boundaries</a> chapter for more details on setting these options.</p>
+<h2 id="regression-check"><a class="header" href="#regression-check">Regression check</a></h2>
+<p>By default, <code>cargo-bisect-rustc</code> assumes the <em>start</em> boundary successfully builds, and the <em>end</em> boundary fails to build.
+You can change this using the <code>--regress</code> CLI option.
+For example, you can tell it that the <em>start</em> should fail, and the <em>end</em> should pass.
+There are several options you can use with the <code>--regress</code> flag:</p>
+<style>
+    table td:nth-child(1) {
+        white-space: nowrap;
+    }
+</style>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Start</th><th>End</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>error</code></td><td>Succeed</td><td>Fail</td><td>The default setting checks for a failure as the regression.</td></tr>
+<tr><td><code>success</code></td><td>Fail</td><td>Succeed</td><td>Reverses the check to find when something is <em>fixed</em>.</td></tr>
+<tr><td><code>ice</code></td><td>No ICE</td><td>ICE</td><td>Scans when an Internal Compiler Error (ICE) was introduced.</td></tr>
+<tr><td><code>non-ice</code></td><td>ICE</td><td>No ICE</td><td>Scans when an ICE was fixed.</td></tr>
+<tr><td><code>non-error</code></td><td>Non-ICE Failure</td><td>Succeed or ICE</td><td>Scans when an ill-formed program stops being properly rejected, or the compiler starts generating an ICE.</td></tr>
+</tbody></table>
+</div>
+<p>See <a href="usage.html#scripting">Scripting</a> for customizing this behavior.</p>
+<h2 id="custom-commands"><a class="header" href="#custom-commands">Custom commands</a></h2>
+<p>By default, <code>cargo-bisect-rustc</code> runs <code>cargo build</code>.
+You can change which <code>cargo</code> command is run by passing additional arguments after <code>--</code>:</p>
+<pre><code class="language-sh">cargo bisect-rustc -- test --test mytest
+</code></pre>
+<h2 id="scripting"><a class="header" href="#scripting">Scripting</a></h2>
+<p>You can use an arbitrary script for determining what is a baseline and regression.
+This is an extremely flexible option that allows you to perform any action automatically.
+Just pass the path to the script to the <code>--script</code> CLI command:</p>
+<pre><code class="language-sh">cargo bisect-rustc --script ./test.sh
+</code></pre>
+<p>The script should exit 0 for the baseline, and nonzero for a regression.
+Since <code>cargo-bisect-rustc</code> sets <code>RUSTUP_TOOLCHAIN</code> (see <a href="rustup.html">Rustup toolchains</a>), all you need to do is call <code>cargo</code> or <code>rustc</code>, and the script should automatically use the toolchain that is currently being tested.</p>
+<pre><code class="language-sh">#!/bin/sh
+
+set -ex
+
+# This checks that a warning is only printed once.
+# See https://github.com/rust-lang/rust/issues/88256 for a regression where it
+# started printing twice.
+
+OUTPUT=`cargo check 2&gt;&amp;1`
+COUNT=`echo "$OUTPUT" | grep -c "unnecessary parentheses"`
+test $COUNT -eq 1
+</code></pre>
+<p>If you need to use the targets directly without using <code>cargo</code> in the script, they are available in <code>$CARGO_TARGET_DIR/[release|debug]/...</code>, since <code>cargo-bisect-rustc</code> sets <code>$CARGO_TARGET_DIR</code>.</p>
+<p>Check out the <a href="examples/index.html">examples chapters</a> for several examples of how to use this option.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="tutorial"><a class="header" href="#tutorial">Tutorial</a></h1>
+<p><code>cargo-bisect-rustc</code> works by building a Cargo project and checking if it succeeds or fails.
+This tutorial walks through an example of this process.</p>
+<h2 id="finding-a-regression"><a class="header" href="#finding-a-regression">Finding a regression</a></h2>
+<p>Create a cargo project that demonstrates the regression.
+Let’s use <a href="https://github.com/rust-lang/rust/issues/53157">issue #53157</a> as an example:</p>
+<pre><code class="language-sh">cargo new foo
+cd foo
+</code></pre>
+<p>Edit <code>src/main.rs</code> with the example from the issue:</p>
+<pre><pre class="playground"><code class="language-rust">macro_rules! m {
+    () =&gt; {{
+        fn f(_: impl Sized) {}
+        f
+    }}
+}
+
+fn main() {
+    fn f() -&gt; impl Sized {};
+    m!()(f());
+}</code></pre></pre>
+<p>Since we are testing an old regression, also edit <code>Cargo.toml</code> to remove the <code>edition = "2021"</code> field which isn’t supported in these versions.</p>
+<p>Then run <code>cargo bisect-rustc --end=2018-08-04</code>.</p>
+<p>We need to provide the end point for this particular example because that’s an old regression already fixed on the latest nightlies.
+We could also provide a start point if we know one;
+that’s going to make it faster by avoiding scanning for the start.
+For instance:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=2018-05-07 --end=2018-08-04
+</code></pre>
+<p>It will run <code>cargo build</code> in the project and check whether or not it fails.
+It will do a binary search between the start and end range to find exactly where the regression occurred.</p>
+<blockquote>
+<p><strong>Note</strong>: You can also use the flag <a href="usage.html#regression-check"><code>--regress</code></a> to specify other common regression criteria, e.g. <code>--regress=ice</code> for internal compiler errors.</p>
+</blockquote>
+<blockquote>
+<p><strong>Note</strong>: Additional ways to specify boundaries include stable versions and git commit hashes. See the <a href="boundaries.html">Bisection boundaries</a> chapter for more details on setting these options.</p>
+</blockquote>
+<p>In our example, in just a few steps, we can find that it stopped working on <code>nightly-2018-07-30</code>.</p>
+<p>If the regression is recent enough, then it will print out a list of PRs that were committed on that date.
+In this particular example, it is too old, so we’ll need to manually inspect the git log to see which PRs were merged.</p>
+<p>If the nightly was within the last 167 days, then <code>cargo-bisect-rustc</code> will then start bisecting those individual PRs.</p>
+<p>After finding potential candidates, you can go inspect those PRs to see which one is the likely cause.
+In this case, since the ICE was in MIR const propagation, and #51361 is the likely candidate since it modified const evaluation.</p>
+<h2 id="testing-interactively"><a class="header" href="#testing-interactively">Testing interactively</a></h2>
+<p>Pass/fail of <code>cargo build</code> may not be what you’re after.
+Perhaps the issue is an error message changed, so both the “good” and “bad” version will fail to
+compile, just with a different message.
+Or maybe something used to fail, and now erroneously passes.
+You can use the interactive feature with the <code>--prompt</code> flag to visually inspect a build and tell <code>cargo-bisect-rustc</code> what’s “good” and what’s “bad”.
+Let’s use <a href="https://github.com/rust-lang/rust/issues/55036">issue #55036</a> as an example where an error message changed:</p>
+<p>In <code>Cargo.toml</code>, remove the <code>edition</code> field (this example was before editions).</p>
+<p><code>src/main.rs</code>:</p>
+<pre><pre class="playground"><code class="language-rust">struct Foo {
+    bar: i32
+}
+
+trait Baz {
+    fn f(Foo { bar }: Foo) {}
+}
+
+fn main() {}</code></pre></pre>
+<p>This historically emitted a bad error, was updated to emit a nice error (E0642 added in #53051), but then that nice error was lost somewhere (on the 2015 edition).
+Let’s find where it was lost!
+Grab the ranges between where it was added and where we know it fails:</p>
+<pre><code class="language-sh">cargo bisect-rustc --prompt \
+    --start=2018-08-14 \
+    --end=2018-10-11
+</code></pre>
+<p>At each step, <code>cargo-bisect-rustc</code> will show the output and ask you:</p>
+<pre><code class="language-text">nightly-2018-08-14 finished with exit code Some(101).
+please select an action to take:
+&gt; mark regressed
+  mark baseline
+  retry
+</code></pre>
+<p>Choose <code>mark baseline</code> with the nice E0642 message, and <code>mark regressed</code> with the less-favorable token error.
+Fairly quickly we find it regressed in nightly-2018-10-11.
+The most likely candidate is #54457 which is a rollup PR.
+It’s usually not too hard to look through the commits and find a likely culprit.
+Indeed in this example, #54415 modified function parameter parsing.</p>
+<h2 id="testing-with-a-script"><a class="header" href="#testing-with-a-script">Testing with a script</a></h2>
+<p>Using the <code>--script</code> option allows you to do something more fancy than just <code>cargo build</code>.
+Maybe you need to run cargo multiple times, or just call <code>rustc</code> directly, or you want to automatically grep through the output.
+The possibilities are endless!
+Just write a little shell script that exits 0 for the baseline, and exits nonzero for the regression.
+As an example, the previous interactive session can be hands-free automated with this script:</p>
+<p><code>test.sh</code>:</p>
+<pre><code class="language-sh">#!/bin/sh
+
+# Fail if we no longer get a `E0642` error:
+cargo check 2&gt;&amp;1 | grep E0642
+</code></pre>
+<p>And then run:</p>
+<pre><code class="language-sh">cargo bisect-rustc --script=./test.sh \
+    --start=2018-08-14 \
+    --end=2018-10-11
+</code></pre>
+<h2 id="custom-bisection-messages"><a class="header" href="#custom-bisection-messages">Custom bisection messages</a></h2>
+<p><em>Available from v0.6.9</em></p>
+<p>You can add custom messages when bisecting a regression. Taking inspiration from git-bisect, with <code>term-new</code> and <code>term-old</code> you can set custom messages to indicate if a regression matches the condition set by the bisection.</p>
+<p>Example:</p>
+<pre><code class="language-sh">cargo bisect-rustc \
+    --start=2018-08-14 \
+    --end=2018-10-11 \
+    --term-old "No, this build did not reproduce the regression, compile successful" \
+    --term-new "Yes, this build reproduces the regression, compile error"
+</code></pre>
+<p>In other words, <code>--term-old</code> is displayed for older compilers that <strong>do not</strong> exhibit the regression. <code>--term-new</code> is for newer compilers which do exhibit the regression.</p>
+<p>What counts as a “regression” is defined by the <a href="usage.html#regression-check"><code>--regress</code></a> CLI option. By default, a regression is a compile-error (which is equivalent to <code>--term-new</code>). If you flip the definition of a “regression” with <code>--regress=success</code>, then a regression is a successful compile (which is <em>also</em> equivalent to <code>--term-new</code>).</p>
+<p>There are default terms based on the current <code>--regress</code> setting. Customizing the terms is most useful when using <a href="tutorial.html#testing-with-a-script">scripting</a>. For example, in the <a href="examples/doc-change.html">Documentation changes</a> example, the customized terms can more clearly express the results of the script of whether or not it found what it was looking for in the documentation.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="rust-source-repo"><a class="header" href="#rust-source-repo">Rust source repo</a></h1>
+<p>For <code>cargo-bisect-rustc</code> to work, it needs to be able to read the git log of the <a href="https://github.com/rust-lang/rust/"><code>rust-lang/rust</code></a> repo.
+<code>cargo-bisect-rustc</code> supports several methods for this described below.</p>
+<h2 id="github-api"><a class="header" href="#github-api">GitHub API</a></h2>
+<p>By default, <code>cargo-bisect-rustc</code> uses the GitHub API to fetch the information instead of using a local checkout.</p>
+<pre><code class="language-sh">cargo bisect-rustc --access=github
+</code></pre>
+<p>Beware that GitHub has restrictive rate limits for unauthenticated requests.
+It allows 60 requests per hour, and <code>cargo-bisect-rustc</code> will use about 10 requests each time you run it (which can vary depending on the bisection).
+If you run into the rate limit, you can raise it to 5000 requests per hour by setting the <code>GITHUB_TOKEN</code> environment variable to a <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token">GitHub personal token</a>.
+If you use the <a href="https://cli.github.com/"><code>gh</code> CLI tool</a>, you can use it to get a token:</p>
+<pre><code class="language-sh">GITHUB_TOKEN=`gh auth token` cargo bisect-rustc --access=github
+</code></pre>
+<p>If you don’t use <code>gh</code>, you’ll just need to copy and paste the token.</p>
+<h2 id="local-clone"><a class="header" href="#local-clone">Local clone</a></h2>
+<p><code>cargo-bisect-rustc</code> can also clone the rust repo in the current directory (as <code>rust.git</code>).
+This option can be quite slow if you don’t specify the repo path at build time.
+You can specify this with the <code>--access</code> CLI argument:</p>
+<pre><code class="language-sh">cargo bisect-rustc --access=checkout
+</code></pre>
+<h2 id="rust_src_repo-environment-variable"><a class="header" href="#rust_src_repo-environment-variable"><code>RUST_SRC_REPO</code> environment variable</a></h2>
+<p>You can specify the location of the rust repo with the <code>RUST_SRC_REPO</code> environment variable at runtime.
+This is useful if you already have it checked out somewhere, but is cumbersome to use.</p>
+<pre><code class="language-sh">RUST_SRC_REPO=/path/to/rust cargo bisect-rustc
+</code></pre>
+<h2 id="rust_src_repo-environment-variable-build-time"><a class="header" href="#rust_src_repo-environment-variable-build-time"><code>RUST_SRC_REPO</code> environment variable (build-time)</a></h2>
+<p>Setting the <code>RUST_SRC_REPO</code> environment variable when installing <code>cargo-bisect-rustc</code> will set the default location for the rust repo.
+This is recommended if you already have the rust repo checked out somewhere.</p>
+<pre><code class="language-sh">RUST_SRC_REPO=/path/to/rust cargo install cargo-bisect-rustc
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="bisection-boundaries"><a class="header" href="#bisection-boundaries">Bisection boundaries</a></h1>
+<p><code>cargo-bisect-rustc</code> does a binary search for the regression using a <em>start</em> and <em>end</em> boundary.
+You can specify these boundaries with the <code>--start</code> and <code>--end</code> CLI flags.
+There are several ways to specify what those boundaries are.
+If you run the command without specifying the boundaries, it will search for them automatically:</p>
+<pre><code class="language-sh"># No --start or --end flags
+cargo bisect-rustc
+</code></pre>
+<p>This will assume the latest nightly is a regression (the <em>end</em> boundary).
+It will then search backwards until it can find a nightly that passes to use as the <em>start</em> boundary.
+Bisection can usually go faster if you happen to know the start boundary, so that it doesn’t need to search for it.</p>
+<p><code>--start</code> and <code>--end</code> are optional.
+If <code>--start</code> is not specified, then it will try to find the start range automatically.
+If <code>--end</code> is not specified, it will assume it is the most recently available.</p>
+<h2 id="date-boundaries"><a class="header" href="#date-boundaries">Date boundaries</a></h2>
+<p>You can pass a date in the form YYYY-MM-DD to the <code>--start</code> and <code>--end</code> flags.
+It will download the nightly corresponding to that date, and then begin bisecting those nightlies.</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=2018-08-14 --end=2018-10-11
+</code></pre>
+<p>If the nightly with the regression was within the past 167 days, then it will automatically start bisecting the individual PRs merged on that day using <a href="boundaries.html#git-commit-boundaries">Git commit boundaries</a>.</p>
+<blockquote>
+<p><strong>Note</strong>: A pitfall is that if you use something like <code>rustc +nightly --version</code> to figure out the version you are on it will often identify a date that is one day early from the nightly toolchain version. E.g. <code>nightly-2025-07-19</code> will say <code>2025-07-18</code>, since that is when the most recent commit was merged, even though the toolchain was published on the 19th.</p>
+</blockquote>
+<h2 id="git-commit-boundaries"><a class="header" href="#git-commit-boundaries">Git commit boundaries</a></h2>
+<p>You can pass the particular git commit hash of a PR as a boundary.
+The Rust project keeps the builds of every merged PR for the last 167 days.
+If you happen to know the PR to use as a boundary, you can pass the SHA-1 hash of that PR.</p>
+<pre><code class="language-sh">cargo bisect-rustc \
+    --start=6323d9a45bdf0ac2a9319a6a558537e0a7e6abd1 \
+    --end=866a713258915e6cbb212d135f751a6a8c9e1c0a
+</code></pre>
+<p>There are several ways to determine the SHA-1 hash for a PR.</p>
+<ul>
+<li>On the PR itself, you should see a message like “bors merged commit c50c62d into <code>rust-lang:&lt;default-branch&gt;</code>”.
+You can copy that hash to use as a boundary.
+If the PR was merged as part of a rollup, you will need to use the hash of the rollup instead.
+You’ll need to look through the PR messages to see if the PR was mentioned from a rollup PR.</li>
+<li>In the rust repo, run <code>git log --first-parent upstream/HEAD</code> (where <code>upstream</code> is your origin name for <code>rust-lang/rust</code>).
+This will show all the top-level commits.
+You can then search for your PR.</li>
+</ul>
+<blockquote>
+<p><strong>Note</strong>: If the PR was merged after the most recent nightly, you’ll need to be sure to also specify the <code>--end</code> range.
+Otherwise it will assume the most recent nightly is the <em>end</em> and it won’t work if the start is after the end.</p>
+</blockquote>
+<p>If the regression is found in a <a href="https://forge.rust-lang.org/release/rollups.html">rollup PR</a>, then <code>cargo-bisect-rustc</code> will bisect the individual PRs within the rollup.
+This final bisection is only available for <code>x86_64-unknown-linux-gnu</code> since it is using the builds made for the <a href="https://perf.rust-lang.org/">rustc performance tracker</a>.</p>
+<blockquote>
+<p><strong>Note</strong>: If you specify date boundaries, then you can use the <code>--by-commit</code> CLI option to force it to use PR commits instead of nightlies.</p>
+</blockquote>
+<h2 id="git-tag-boundaries"><a class="header" href="#git-tag-boundaries">Git tag boundaries</a></h2>
+<p>The boundary can be specified with a git release tag.
+This is useful if you know something works in one release and not another, but you don’t happen to know which nightly this corresponds with.
+When given a tag, <code>cargo-bisect-rustc</code> will try to find the nightly that corresponds with that release.
+For example:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=1.58.0 --end=1.59.0
+</code></pre>
+<h2 id="monotonicity"><a class="header" href="#monotonicity">Monotonicity</a></h2>
+<p>When writing your test and picking a bisection range, you should be careful to ensure that the test won’t vary between pass/fail over the bisection range.
+It should only transition from good to bad once in the bisection range (it must change
+<a href="https://en.wikipedia.org/wiki/Bisection_(software_engineering)#Monotonicity">monotonically</a>).</p>
+<p>In the following example, <code>cargo-bisect-rustc</code> will find one of the transitions, but that may not be the true root cause of the issue you are investigating.</p>
+<pre><code class="language-text">nightly-2023-02-01 baseline **start**
+nightly-2023-02-02 baseline
+nightly-2023-02-03 baseline
+nightly-2023-02-04 regression
+nightly-2023-02-05 regression
+nightly-2023-02-06 baseline
+nightly-2023-02-07 regression
+nightly-2023-02-08 regression **end**
+</code></pre>
+<p>Here it may either find 2023-02-04 or 2023-02-07 as the regression.</p>
+<p>The following are some suggestions for avoiding or dealing with this problem:</p>
+<ul>
+<li>Make sure your test reliably exhibits the issue you are looking for, and does not generate any false positives or false negatives.</li>
+<li>Analyze the PR that was reported as the regression.
+Do the changes in the PR seem to be a probable cause?</li>
+<li>Try to keep the bisection range small to reduce the probability that you will encounter multiple regression transitions.</li>
+<li>Use the <code>-vv</code> flag (very verbose) to display the output from the compiler to make sure it is what you expect.</li>
+<li>Use the <a href="tutorial.html#testing-interactively"><code>--prompt</code></a> flag to inspect the output and verify each step.</li>
+<li>Beware that some issues may get fixed and then regress multiple times.
+Try to keep the bisection range as close to the present day as possible.
+Compare the output of the “regressed” commit to the latest nightly to see if they are the same.</li>
+<li>If the test only fails sporadically, use a <a href="examples/flaky.html">script</a> to run the compiler many times until it fails or it passes enough iterations that you feel confident that it is good.</li>
+<li>If the code requires relatively new language features, be careful not to pick a starting range that is too old.</li>
+<li>Beware of code-generation bugs that can be sensitive to code layout.
+Since the code to rustc changes rapidly over time, code can shift around causing different layouts and optimizations, which might cause an issue to appear and disappear several times over the bisection range.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="rustup-toolchains"><a class="header" href="#rustup-toolchains">Rustup toolchains</a></h1>
+<p><code>cargo-bisect-rustc</code> takes advantage of <a href="https://rust-lang.github.io/rustup/concepts/toolchains.html">rustup toolchains</a> for installation and selecting the correct <code>rustc</code> to run.
+It will essentially run <code>cargo +bisector-nightly-2023-03-18-x86_64-unknown-linux-gnu build</code> using rustup <a href="https://rust-lang.github.io/rustup/overrides.html#toolchain-override-shorthand">toolchain override shorthand</a> to run the toolchains that it downloads.
+This sets the <code>RUSTUP_TOOLCHAIN</code> environment variable to the toolchain name, which ensures that any call to <code>rustc</code> will use the correct toolchain.</p>
+<p>By default, <code>cargo-bisect-rustc</code> will delete toolchains immediately after using them.
+You can use the <code>--preserve</code> option to keep the toolchains so that you can use them manually.
+See the <a href="examples/preserve.html">Preserving toolchains</a> example for more details.</p>
+<p>When using the <code>--script</code> option, the script should just invoke <code>cargo</code> or <code>rustc</code> normally, and rely on the <code>RUSTUP_TOOLCHAIN</code> environment variable to pick the correct toolchain.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="git-bisect-a-custom-build"><a class="header" href="#git-bisect-a-custom-build">Git bisect a custom build</a></h1>
+<p>There are some rare cases where you may need to build <code>rustc</code> with custom options, or otherwise work around issues with pre-built compilers not being available.
+For this you can use <a href="https://git-scm.com/docs/git-bisect"><code>git bisect</code></a> to build the compiler locally.</p>
+<p>It can be helpful to use the <code>--first-parent</code> option so that it only bisects the merge commits directly reachable on the default branch.
+Otherwise the bisecting may land on intermediate commits from within a PR which may not build or test correctly.</p>
+<p>To start the bisection, specifying the boundaries where the bisection will start:</p>
+<pre><code class="language-sh">git bisect start --first-parent
+git bisect good 96ddd32c4bfb1d78f0cd03eb068b1710a8cebeef
+git bisect bad a00f8ba7fcac1b27341679c51bf5a3271fa82df3
+</code></pre>
+<p>Then, build the compiler as needed and run your tests to check for a regression:</p>
+<pre><code class="language-sh">./x.py build std
+rustc +stage1 foo.rs
+</code></pre>
+<p>You may want to consider running <code>./x.py clean</code> if you are running into issues since changes to the internal structures of build artifacts aren’t always versioned, and those changes can be incompatible.
+Incremental caches are particularly susceptible, so you may want to turn that off if you have turned them on.</p>
+<p>If you determine the current version is good or bad, run <code>git bisect good</code> or <code>git bisect bad</code> to mark that, and then repeat building and marking until finished.</p>
+<p>Similar to <code>cargo-bisect-rustc</code>, <code>git bisect</code> supports scripting and lots of other goodies.
+Check out its documentation for more.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="alt-builds"><a class="header" href="#alt-builds">Alt builds</a></h1>
+<p>Each commit also generates what are called “alt” builds.
+These are builds of rustc with some different options set.
+As of August 2023, these include:</p>
+<ul>
+<li><code>rust.parallel-compiler</code></li>
+<li><code>llvm.assertions</code></li>
+<li><code>rust.verify-llvm-ir</code></li>
+</ul>
+<p>For more information on these settings, see the <a href="https://github.com/rust-lang/rust/blob/HEAD/config.example.toml"><code>config.toml</code> docs</a>.
+These alt settings are defined in <a href="https://github.com/rust-lang/rust/blob/c0b6ffaaea3ebdf5f7a58fc4cf7ee52c91077fb9/src/ci/run.sh#L99-L105"><code>ci/run.sh</code></a>.</p>
+<p>Alt builds are only available for a few targets.
+Look for the <code>-alt</code> builds in <a href="https://github.com/rust-lang/rust/blob/HEAD/src/ci/github-actions/ci.yml"><code>ci.yml</code></a>.</p>
+<p>This can be useful if you are bisecting an LLVM issue.
+With LLVM assertions enabled, alt builds have checks that can help identify broken assumptions.</p>
+<p>Alt builds are only made for commit builds, and not nightly releases.
+You will need to specify <code>--by-commit</code> (or use a hash in the <code>--start</code> or <code>--end</code> flags) to only use commit builds.</p>
+<pre><code class="language-sh">cargo bisect-rustc --alt --by-commit
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
+<p>The following chapters show examples of different ways of using <code>cargo-bisect-rustc</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="checking-diagnostics"><a class="header" href="#checking-diagnostics">Checking diagnostics</a></h1>
+<p>The following is an example of checking when the diagnostic output of <code>rustc</code> <em>changes</em>.
+For example, this can check when either the wording has changed, or a different error or warning is produced.</p>
+<p><a href="https://github.com/rust-lang/rust/issues/109067">#109067</a> is an example of where this is necessary.
+A warning started being emitted, and it is the kind of warning that cannot be turned into an error with <code>deny(warnings)</code>.</p>
+<p>The following script is intended to be used with the <code>--script</code> option (set the executable flag on the script, <code>chmod u+x</code>):</p>
+<pre><code class="language-sh">#!/bin/sh
+
+OUTPUT=`cargo check 2&gt;&amp;1`
+# Comment out this test if your example is intended to fail.
+if [ $? -ne 0 ]
+then
+    echo "Build unexpectedly failed: $OUTPUT"
+    exit 1
+fi
+# Display the output for debugging purposes.
+# Run `cargo-bisect-rustc` with `-vv` to view the output.
+echo "$OUTPUT"
+# This indicates a regression when the text "non-ASCII" is in the output.
+#
+# If the regression is when the text is *not* in the output, remove the `!` prefix
+# (and customize the `--term-old` and `--term-new` CLI options if you want).
+! echo "$OUTPUT" | grep "non-ASCII"
+</code></pre>
+<p>Then run something like:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=1.67.0 --end=1.68.0 --script ./test.sh \
+    --term-old="No warning" --term-new="Found non-ASCII warning"
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="scripting-on-windows"><a class="header" href="#scripting-on-windows">Scripting on Windows</a></h1>
+<p>Using the <code>--script</code> option on Windows can be cumbersome because Windows does not support <code>#!</code> scripts like Unix does, and the built-in scripting can also be awkward.
+The following sections show the different ways you can use scripting.</p>
+<h2 id="batch-file"><a class="header" href="#batch-file">Batch file</a></h2>
+<p>You can use DOS-style <code>.bat</code> files:</p>
+<p><code>test.bat</code>:</p>
+<pre><code class="language-bat">(cargo check 2&gt;&amp;1) | find "E0642"
+</code></pre>
+<p>This can be executed directly with:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --script ./test.bat
+</code></pre>
+<p>But <code>.bat</code> can be challenging to do more complex options, or you may not be familiar with it.</p>
+<h2 id="powershell"><a class="header" href="#powershell">Powershell</a></h2>
+<p>You can’t execute <code>.ps1</code> Powershell files directly, so you will need to use <code>pwsh</code> to launch them:</p>
+<p><code>test.ps1</code>:</p>
+<pre><code class="language-powershell">( cargo check 2&gt;&amp;1 ) | grep E0642
+if ( -Not $? ) {
+    exit 1
+}
+</code></pre>
+<p>This can be run with:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --script pwsh -- -File ./test.ps1
+</code></pre>
+<h2 id="bash"><a class="header" href="#bash">Bash</a></h2>
+<p>If you have Git-for-Windows installed, then you can use its copy of bash to run bash scripts:</p>
+<p><code>test.sh</code>:</p>
+<pre><code class="language-sh">#!/bin/bash
+
+cargo check 2&gt;&amp;1 | grep E0642
+</code></pre>
+<p>This can be run with:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --script "C:\\Program Files\\Git\\usr\\bin\\bash.exe" -- ./test.sh
+</code></pre>
+<p>This also works if you have bash from something like msys2 installed.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="incremental-compilation"><a class="header" href="#incremental-compilation">Incremental compilation</a></h1>
+<p>Testing for regressions with incremental compilation may require running a command multiple times.
+The following illustrates an example for <a href="https://github.com/rust-lang/rust/issues/87384">#87384</a> which only generates a warning the second time a build is run with incremental.
+Previously no warning was emitted.</p>
+<p><code>foo.rs</code>:</p>
+<pre><pre class="playground"><code class="language-rust">#![type_length_limit = "95595489"]
+
+pub fn main() {
+    println!("Hello, world!");
+}</code></pre></pre>
+<p>Create a script <code>test.sh</code>:</p>
+<pre><code class="language-sh">#!/bin/sh
+
+# Exit if any command fails.
+set -e
+
+rm -rf incremental
+rustc foo.rs --crate-type lib -C incremental=incremental
+echo second
+OUTPUT=`rustc foo.rs --crate-type lib -C incremental=incremental 2&gt;&amp;1`
+echo $OUTPUT
+! echo "$OUTPUT" | grep \
+    "crate-level attribute should be in the root module"
+</code></pre>
+<p>Run this script with:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --start 1.54.0 --end 1.55.0 --script ./test.sh
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="slow-or-hung-compilation"><a class="header" href="#slow-or-hung-compilation">Slow or hung compilation</a></h1>
+<p>Some regressions may involve the compiler hanging or taking an unusually long time to run.
+The <code>--timeout</code> CLI option can be used to check for this.
+Let’s use <a href="https://github.com/rust-lang/rust/issues/89524">#89524</a> as an example.
+A particular combination of factors caused the compiler to start to hang.</p>
+<p>Change <code>Cargo.toml</code> to the following:</p>
+<pre><code class="language-toml">[package]
+name = "slow"
+version = "0.1.0"
+
+[dependencies]
+config = "=0.9.3"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+</code></pre>
+<p>Then use the timeout option:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --start=2021-09-01 --end=2021-10-02 --timeout 30 -- build --release
+</code></pre>
+<p>You may need to adjust the timeout value based on the speed of your system.</p>
+<blockquote>
+<p><strong>Note</strong>: <code>--timeout</code> is currently not working on macOS. See <a href="https://github.com/rust-lang/cargo-bisect-rustc/issues/232">https://github.com/rust-lang/cargo-bisect-rustc/issues/232</a>.</p>
+</blockquote>
+<p>In some cases bisecting if a timeout happens is not enough, there might also be a compilation error (see for example <a href="https://github.com/rust-lang/rust/issues/139197">rustc#139197</a>). In this case the script should handle all the work, here’s a Bash example (given <code>main.rs</code> is the Rust code to reproduce the hanging compilation):</p>
+<pre><code class="language-sh">#!/bin/bash
+res=$( timeout 3 rustc main.rs )
+if [ "$?" -eq 124 ]; then
+    # Excessive compile time
+    exit 1
+else
+    # Compilation fails as expected *but* it doesn't hang
+    exit 0
+fi
+</code></pre>
+<p>and then run (example):</p>
+<pre><code class="language-sh">cargo-bisect-rustc [...params...] --script test.sh
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="using-extra-components"><a class="header" href="#using-extra-components">Using extra components</a></h1>
+<p>By default, <code>cargo-bisect-rustc</code> only fetches <code>rustc</code>, <code>cargo</code>, <code>rustdoc</code>, and the standard library for the host.
+You may need additional <a href="https://rust-lang.github.io/rustup/concepts/components.html">Rustup Components</a> to run your test.
+Some examples of when this might be needed are:</p>
+<ul>
+<li>You want to find a regression in Clippy (see <a href="examples/clippy.html">Bisecting Clippy</a>), or miri.</li>
+<li>Scanning for when some documentation changed (see <a href="examples/doc-change.html">Documentation changes</a>).</li>
+<li>The platform needs additional things.
+For example, bisecting <code>x86_64-pc-windows-gnu</code> host may need the <code>rust-mingw</code> component.</li>
+</ul>
+<p>If you are testing cross-compilation, use the <code>--target</code> option to download the standard library for the target you are using.</p>
+<p>The following example shows how to use components to do a bisection with Cargo’s <a href="https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#build-std">build-std</a> feature.</p>
+<pre><code class="language-sh">cargo-bisect-rustc --start=2022-11-01 --end=2022-11-20 -c rust-src -- build -Zbuild-std
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: The <code>--with-src</code> option is an alias for <code>-c rust-src</code>. <br />
+The <code>--with-dev</code> option is an alias for <code>-c rustc-dev -c llvm-tools</code>.</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="running-without-cargo"><a class="header" href="#running-without-cargo">Running without cargo</a></h1>
+<p>Some bisections don’t require Cargo.
+You can use the <code>--without-cargo</code> option to skip installing cargo which can speed up the bisection since it doesn’t need to download cargo, and doesn’t have the overhead of running cargo.
+You will need to pair this with <code>--script</code> since <code>cargo-bisect-rustc</code> assumes projects use Cargo.</p>
+<p>For example, using a simple <code>rustc</code> command:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --start=2022-11-01 --end=2022-11-20 --without-cargo --script=rustc -- foo.rs
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: You can use <code>--without-cargo</code> while still using a Cargo project.
+Rustup will fall back to using <code>cargo</code> from your installed nightly, beta, or stable toolchain.
+However, this isn’t recommended since <code>cargo</code> is only intended to work with the version it is released with, and can sometimes be incompatible with different versions.
+But if you are bisecting a very recent change, then you can probably get away with it.</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="preserving-toolchains"><a class="header" href="#preserving-toolchains">Preserving toolchains</a></h1>
+<p>You may want to reuse the toolchains downloaded by <code>cargo-bisect-rustc</code> for doing further analysis or debugging.
+Or, while setting up your regression test, you may need to adjust your test and script several times, and downloading the same toolchains multiple times can be quite slow.</p>
+<p>You can do this with the <code>--preserve</code> option.</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=2023-01-01 --end=2023-02-01 --preserve
+</code></pre>
+<p>The toolchains will be kept in your Rustup home directory (typically <code>~/.rustup/toolchains</code>).</p>
+<p>Toolchains for nightlies will have the form of <code>bisector-nightly-YYYY-MM-DD-&lt;target&gt;</code>.
+Toolchains for PR artifacts will have the form of <code>bisector-ci-&lt;hash&gt;-&lt;target&gt;</code>.</p>
+<p>You can run these toolchains using a Rustup override, like this:</p>
+<pre><code class="language-sh">cargo +bisector-nightly-2023-03-18-x86_64-unknown-linux-gnu build
+# or...
+cargo +bisector-ci-e187f8871e3d553181c9d2d4ac111197a139ca0d-x86_64-unknown-linux-gnu build
+</code></pre>
+<p>When you are done, you’ll probably want to clean up these directories since they use a lot of space.
+The easiest method is to just delete the directories:</p>
+<pre><code class="language-sh">rm -rf ~/.rustup/toolchains/bisector-*
+</code></pre>
+<h2 id="manually-installing"><a class="header" href="#manually-installing">Manually installing</a></h2>
+<p>The <code>--install</code> option can be used to only install a toolchain.
+This won’t do a bisection, it is just for fetching a toolchain for testing.</p>
+<pre><code class="language-sh">cargo bisect-rustc --install e187f8871e3d553181c9d2d4ac111197a139ca0d
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: See also <a href="https://github.com/kennytm/rustup-toolchain-install-master"><code>rustup-toolchain-install-master</code></a> which is specialized for installing CI artifacts.</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="bisecting-rustdoc"><a class="header" href="#bisecting-rustdoc">Bisecting Rustdoc</a></h1>
+<p><code>cargo-bisect-rustc</code> can be used to check for Rustdoc regressions, too.
+All you need to do is instruct it to use the correct command.</p>
+<p>The following example will check to find a regression when <code>cargo doc</code> suddenly starts to fail.</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=2022-08-05 --end=2022-09-09 -- doc
+</code></pre>
+<p>Some rustdoc regressions might be in the generated HTML output.
+To scan the output, you can use a script like the following:</p>
+<p><code>test.sh</code>:</p>
+<pre><code class="language-sh">#!/bin/sh
+
+# Exit if any command fails.
+set -e
+
+cargo doc
+
+grep "some example text" $CARGO_TARGET_DIR/doc/mycrate/fn.foo.html
+</code></pre>
+<p>This can be used with the <code>--script</code> option:</p>
+<pre><code class="language-sh">cargo-bisect-rustc --start=2023-01-22 --end=2023-03-18 --script=./test.sh \
+    --term-old="Found example text" --term-new="Failed, or did not find text"
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="bisecting-clippy"><a class="header" href="#bisecting-clippy">Bisecting clippy</a></h1>
+<p><code>cargo-bisect-rustc</code> can be used to check for Clippy regressions, too.
+You’ll need to instruct it to download clippy, and run the command correctly:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=1.67.0 --end=1.68.0 -c clippy -- clippy
+</code></pre>
+<p>Note that depending on what you are looking for, this may just find a PR that syncs the <a href="https://github.com/rust-lang/rust-clippy/"><code>rust-clippy</code></a> repo to <code>rust-lang/rust</code>.
+You may be able to scan the list of changes in that PR to discover what you are looking for.
+If the list of changes is too big or nothing is jumping out as a possible culprit, then consider using <a href="https://git-scm.com/docs/git-bisect"><code>git bisect</code></a> on the clippy repo itself (which will require building clippy).</p>
+<p>To bisect a clippy warning, you can upgrade the warning to an error:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=1.84.0 --end=1.85.0 -c clippy -- clippy -- --forbid clippy::useless_conversion
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="documentation-changes"><a class="header" href="#documentation-changes">Documentation changes</a></h1>
+<p><code>cargo-bisect-rustc</code> can be used to scan for changes in the documentation shipped with each release.
+This includes all the books and standard library documentation.
+To do this, instruct it to download the component, and use a script that scans for whatever you are looking for.
+You can use <code>rustup doc --path</code> or <code>rustc --print=sysroot</code> to find the proper location.
+For example:</p>
+<p><code>test.sh</code>:</p>
+<pre><code class="language-sh">#!/bin/sh
+
+# Exit if any command fails.
+set -e
+
+STD=`dirname $(rustup doc --std --path)`
+
+# Checks if a particular file exists.
+# This could also be `grep` or any other kinds of tests you need.
+if [ -e $STD/io/error/type.RawOsError.html ]
+then
+    echo "found"
+    exit 1
+fi
+</code></pre>
+<p>And run with:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start 1.68.0 --end 1.69.0 -c rust-docs --script ./test.sh \
+    --term-old="Did not find" --term-new="Found"
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: This may not work on all targets since <code>cargo-bisect-rustc</code> doesn’t properly handle rustup manifests, which alias some targets to other targets.
+Use <code>--host x86_64-unknown-linux-gnu</code> in that situation.</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="flaky-errors"><a class="header" href="#flaky-errors">Flaky errors</a></h1>
+<p>Some tests may fail randomly.
+The following script is an example that will run <code>rustc</code> repeatedly to check for a failure.
+This example is from <a href="https://github.com/rust-lang/rust/issues/108216">#108216</a> (which requires macOS).</p>
+<p><code>test.sh</code>:</p>
+<pre><code class="language-sh">#!/bin/sh
+
+rm -rf *.o incremental foo
+
+echo "fn main() { let a: i64 = 1 &lt;&lt; 64; }" &gt; foo1.rs
+echo "fn main() { let a: i64 = 1 &lt;&lt; 63; }" &gt; foo2.rs
+
+ARGS="--crate-name foo -C split-debuginfo=unpacked -C debuginfo=2 -C incremental=incremental"
+
+for i in {1..20}
+do
+    echo run $i
+    rustc foo1.rs $ARGS &amp;&amp; { echo "ERROR: first build should have failed"; exit 1; }
+    rustc foo2.rs $ARGS || { echo "ERROR: second build should have passed"; exit 1; }
+    ./foo || { echo "ERROR: executing should have passed"; exit 1; }
+done
+</code></pre>
+<p>This test can be run with:</p>
+<pre><code class="language-sh">cargo bisect-rustc --start=1.57.0 --end=1.58.0 --script=./test.sh
+</code></pre>
+<p>In general, configure the script to perform whichever actions you need in a <code>for</code> loop that runs enough times that you have a high confidence it has found the regression.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </div>
+    </body>
+</html>
