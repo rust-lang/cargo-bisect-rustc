@@ -12,7 +12,7 @@ pub(crate) trait RustRepositoryAccessor {
     }
 
     /// Looks up commit associated with `commit_ref`, which can be either a sha
-    /// or a more general reference like "origin/master".
+    /// or a more general reference like "origin/HEAD".
     fn commit(&self, commit_ref: &str) -> anyhow::Result<Commit>;
 
     /// Looks up a series of commits ending with `end_sha`; the resulting series
@@ -31,7 +31,7 @@ impl RustRepositoryAccessor for AccessViaLocalGit {
         git::get_commit(commit_ref)
     }
     fn commits(&self, start_sha: &str, end_sha: &str) -> anyhow::Result<Vec<Commit>> {
-        let end_sha = if end_sha == "origin/master" {
+        let end_sha = if end_sha == "origin/HEAD" {
             "FETCH_HEAD"
         } else {
             end_sha

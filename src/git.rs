@@ -52,18 +52,18 @@ impl Deref for RustcRepo {
 fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> anyhow::Result<Git2Commit<'rev>> {
     let revision = repo.revparse_single(rev)?;
 
-    // Find the merge-base between the revision and master.
-    // If revision is a normal commit contained in master, the merge-base will be the commit itself.
-    // If revision is a tag (e.g. a release version), the merge-base will contain the latest master
+    // Find the merge-base between the revision and HEAD.
+    // If revision is a normal commit contained in HEAD, the merge-base will be the commit itself.
+    // If revision is a tag (e.g. a release version), the merge-base will contain the latest HEAD
     // commit contained in that tag.
-    let master_id = repo
-        .revparse_single(&format!("{}/master", repo.origin_remote))?
+    let head_id = repo
+        .revparse_single(&format!("{}/HEAD", repo.origin_remote))?
         .id();
     let revision_id = revision
         .as_tag()
         .map_or_else(|| revision.id(), git2::Tag::target_id);
 
-    let common_base = repo.merge_base(master_id, revision_id)?;
+    let common_base = repo.merge_base(head_id, revision_id)?;
 
     if let Ok(c) = repo.find_commit(common_base) {
         return Ok(c);
@@ -155,7 +155,7 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> anyhow::Res
             Some(author) if author == BORS_AUTHOR => Ok(()),
             Some(author) => bail!(
                 "Expected author {author} to be {BORS_AUTHOR} for {}.\n \
-                Make sure specified commits are on the master branch!",
+                Make sure specified commits are on the HEAD branch!",
                 c.id()
             ),
             None => bail!("No author for {}", c.id()),

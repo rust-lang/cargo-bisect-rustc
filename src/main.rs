@@ -994,7 +994,7 @@ impl Config {
             if c.committer.name != BORS_AUTHOR {
                 bail!(
                     "Expected author {} to be {BORS_AUTHOR} for {}.\n \
-                     Make sure specified commits are on the master branch \
+                     Make sure specified commits are on the HEAD branch \
                      and refer to a bors merge commit!",
                     c.committer.name,
                     c.sha
@@ -1337,7 +1337,7 @@ mod tests {
 |#112937|[18e108ab85b78e6966c5b5bdadfd5b8efeadf080](https://github.com/rust-lang-ci/rust/commit/18e108ab85b78e6966c5b5bdadfd5b8efeadf080)|
 
 
-*previous master*: [f7ca9df695](https://github.com/rust-lang-ci/rust/commit/f7ca9df69549470541fbf542f87a03eb9ed024b6)
+*previous HEAD*: [f7ca9df695](https://github.com/rust-lang-ci/rust/commit/f7ca9df69549470541fbf542f87a03eb9ed024b6)
 
 In the case of a perf regression, run the following command for each PR you suspect might be the cause: `@rust-timer build $SHA`
 <!-- rust-timer: rollup -->";
@@ -1378,7 +1378,7 @@ In the case of a perf regression, run the following command for each PR you susp
 |#113103|Normalize types when applying uninhabited predicate.|`241cd8cd818cdc865cdf02f0c32a40081420b772` ([link](https://github.com/rust-lang-ci/rust/commit/241cd8cd818cdc865cdf02f0c32a40081420b772))|
 
 
-*previous master*: [5ea6668646](https://github.com/rust-lang-ci/rust/commit/5ea66686467d3ec5f8c81570e7f0f16ad8dd8cc3)
+*previous HEAD*: [5ea6668646](https://github.com/rust-lang-ci/rust/commit/5ea66686467d3ec5f8c81570e7f0f16ad8dd8cc3)
 
 In the case of a perf regression, run the following command for each PR you suspect might be the cause: `@rust-timer build $SHA`
 <!-- rust-timer: rollup -->";

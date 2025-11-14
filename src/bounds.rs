@@ -93,7 +93,7 @@ impl Bounds {
             }
             (Some(Bound::Commit(start)), None) => Bounds::Commits {
                 start,
-                end: args.access.repo().commit("origin/master")?.sha,
+                end: args.access.repo().commit("origin/HEAD")?.sha,
             },
             (None, Some(Bound::Commit(end))) => Bounds::Commits {
                 start: EPOCH_COMMIT.to_string(),
