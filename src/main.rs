@@ -36,14 +36,15 @@ use crate::toolchains::{
     ToolchainSpec, YYYY_MM_DD,
 };
 
-const BORS_AUTHOR: &str = "bors";
+/// Git usernames used by bors.
+const BORS_AUTHORS: &[&str] = &["bors", "rust-bors[bot]"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub sha: String,
     pub date: GitDate,
     pub summary: String,
-    pub committer: Author,
+    pub author: Author,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -997,12 +998,12 @@ impl Config {
         let start = access.commit(start_sha)?;
         let end = access.commit(end_sha)?;
         let assert_by_bors = |c: &Commit| -> anyhow::Result<()> {
-            if c.committer.name != BORS_AUTHOR {
+            if !BORS_AUTHORS.contains(&c.author.name.as_str()) {
                 bail!(
-                    "Expected author {} to be {BORS_AUTHOR} for {}.\n \
+                    "Expected author {} to be one of {BORS_AUTHORS:?} for {}.\n \
                      Make sure specified commits are on the default branch \
                      and refer to a bors merge commit!",
-                    c.committer.name,
+                    c.author.name,
                     c.sha
                 );
             }

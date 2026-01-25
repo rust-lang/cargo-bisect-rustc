@@ -13,20 +13,20 @@ use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
 use log::debug;
 
-use crate::{Author, Commit, GitDate, BORS_AUTHOR};
+use crate::{Author, Commit, GitDate, BORS_AUTHORS};
 
 impl Commit {
     // Takes &mut because libgit2 internally caches summaries
     fn from_git2_commit(commit: &mut Git2Commit<'_>) -> Self {
-        let committer = commit.committer();
+        let author = commit.author();
         Commit {
             sha: commit.id().to_string(),
             date: time_to_date(&commit.time()),
             summary: String::from_utf8_lossy(commit.summary_bytes().unwrap()).to_string(),
-            committer: Author {
-                name: committer.name().unwrap_or("").to_string(),
-                email: committer.email().unwrap_or("").to_string(),
-                date: time_to_date(&committer.when()),
+            author: Author {
+                name: author.name().unwrap_or("").to_string(),
+                email: author.email().unwrap_or("").to_string(),
+                date: time_to_date(&author.when()),
             },
         }
     }
@@ -153,9 +153,9 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> anyhow::Res
     // two commits are merge commits made by bors
     let assert_by_bors = |c: &Git2Commit<'_>| -> anyhow::Result<()> {
         match c.author().name() {
-            Some(author) if author == BORS_AUTHOR => Ok(()),
+            Some(author) if BORS_AUTHORS.contains(&author) => Ok(()),
             Some(author) => bail!(
-                "Expected author {author} to be {BORS_AUTHOR} for {}.\n \
+                "Expected author {author} to be one of {BORS_AUTHORS:?} for {}.\n \
                 Make sure specified commits are on the default branch!",
                 c.id()
             ),
@@ -179,7 +179,12 @@ pub fn get_commits_between(first_commit: &str, last_commit: &str) -> anyhow::Res
         res.push(Commit::from_git2_commit(&mut current));
         match current.parents().next() {
             Some(c) => {
-                if c.author().name() != Some(BORS_AUTHOR) {
+                if !c
+                    .author()
+                    .name()
+                    .map(|name| BORS_AUTHORS.contains(&name))
+                    .unwrap_or(false)
+                {
                     debug!(
                         "{:?} has non-bors author: {:?}, skipping",
                         c.id(),
