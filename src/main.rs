@@ -29,7 +29,7 @@ mod toolchains;
 
 use crate::bounds::{Bound, Bounds};
 use crate::github::get_commit;
-use crate::least_satisfying::{least_satisfying, Satisfies};
+use crate::least_satisfying::{least_satisfying, MidpointSelection, Satisfies};
 use crate::repo_access::{AccessViaGithub, AccessViaLocalGit, RustRepositoryAccessor};
 use crate::toolchains::{
     parse_to_naive_date, DownloadError, DownloadParams, InstallError, TestOutcome, Toolchain,
@@ -61,6 +61,8 @@ pub struct Author {
 /// artifacts of this commit itself is no longer available, so this may not be entirely useful;
 /// however, it does limit the amount of commits somewhat.
 const EPOCH_COMMIT: &str = "927c55d86b0be44337f37cf5b0a76fb8ba86e06c";
+/// The earliest known date with an available nightly
+const EPOCH_DATE: chrono::NaiveDate = NaiveDate::from_ymd_opt(2015, 01, 03).unwrap();
 
 const REPORT_HEADER: &str = "\
 ==================================================================================
@@ -823,7 +825,13 @@ impl Config {
     }
 
     fn bisect_to_regression(&self, toolchains: &[Toolchain], dl_spec: &DownloadParams) -> usize {
-        least_satisfying(toolchains, |t, remaining, estimate| {
+        let midpoint = match &toolchains[0].spec {
+            ToolchainSpec::Ci { .. } => MidpointSelection::Naive,
+            ToolchainSpec::Nightly { date } => MidpointSelection::Stabilized {
+                start_offset: (*date - EPOCH_DATE).num_days() as usize,
+            },
+        };
+        least_satisfying(toolchains, midpoint, |t, remaining, estimate| {
             eprintln!(
                 "{remaining} versions remaining to test after this (roughly {estimate} steps)"
             );
