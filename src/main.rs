@@ -484,7 +484,8 @@ impl Config {
     // bisection entry point
     fn bisect(&self) -> anyhow::Result<()> {
         if let Bounds::Commits { start, end } = &self.bounds {
-            let bisection_result = self.bisect_ci(start, end)?;
+            eprintln!("bisecting ci builds starting at {start}, ending at {end}");
+            let bisection_result = self.bisect_ci_via(start, end, &format!("{start}..{end}"))?;
             self.print_results(&bisection_result);
             self.do_perf_search(&bisection_result);
         } else {
@@ -518,7 +519,11 @@ impl Config {
                     date.format(YYYY_MM_DD),
                 );
 
-                let ci_bisection_result = self.bisect_ci_via(&working_commit, &bad_commit)?;
+                let ci_bisection_result = self.bisect_ci_via(
+                    &working_commit,
+                    &bad_commit,
+                    &nightly_regression.spec.to_string(),
+                )?;
 
                 self.print_results(&ci_bisection_result);
                 self.do_perf_search(&ci_bisection_result);
@@ -651,6 +656,64 @@ fn remove_toolchain(cfg: &Config, toolchain: &Toolchain, dl_params: &DownloadPar
             e
         );
     }
+}
+
+fn format_commit_line(commit_desc: &str, terse: bool) -> String {
+    let bors_summary_re = regex::Regex::new(
+        r"Auto merge of #(?<pr_num>\d+) - (?<author>[^:]+):.*\n\s*\n(?<pr_summary>.*)",
+    )
+    .unwrap();
+
+    let Some(cap) = bors_summary_re.captures(&commit_desc) else {
+        // If we can't parse the commit description - return the first line as is
+        let desc = commit_desc
+            .split('\n')
+            .next()
+            .unwrap_or("<unable to get commit summary>");
+        return format!("- {}", desc);
+    };
+
+    let mut out = format!(
+        " - #{} ({}) by {}",
+        &cap["pr_num"], &cap["pr_summary"], &cap["author"]
+    );
+
+    // if it's a rollup (and assuming we're not starved for screen space), try to also add info on the sub-prs
+    if !terse {
+        let rollup_summary_re = regex::Regex::new(r"Rollup of \d+ pull requests").unwrap();
+        if rollup_summary_re.is_match(&commit_desc) {
+            // do not get confused by PRs that are listed in the description, but not actually part of the rollup PR
+            let ok_merges_end = commit_desc
+                .find("Failed merges")
+                .unwrap_or(commit_desc.len());
+            let merge_list = &commit_desc[..ok_merges_end];
+
+            let merge_re = regex::Regex::new(r"- #(?<pr_num>\d+) \((?<pr_summary>.*)\)").unwrap();
+            for merge in merge_re.captures_iter(&merge_list) {
+                out.push_str(&format!(
+                    "\n   - #{} ({})",
+                    &merge["pr_num"], &merge["pr_summary"]
+                ));
+            }
+        }
+    }
+    out
+}
+
+fn format_commit_range_report(commits: &[Commit], range_desc: &str) -> String {
+    let mut report_lines: Vec<String> = vec![];
+    report_lines.push(format!(
+        "<details><summary>\nRegression in {range_desc}. PRs in range:  </summary>\n\n```md"
+    ));
+    // normally we want to display a verbose report of contained PRs,
+    // but that might explode the terminal if the user explicitly set start/end commit SHAs
+    // spanning more than several days.
+    let terse = commits.len() > 50;
+    for (_j, commit) in commits.iter().enumerate() {
+        report_lines.push(format_commit_line(&commit.summary, terse))
+    }
+    report_lines.push("```\n</details>".to_string());
+    report_lines.join("\n")
 }
 
 fn print_final_report(
@@ -987,13 +1050,12 @@ fn toolchains_between(cfg: &Config, a: ToolchainSpec, b: ToolchainSpec) -> Vec<T
 }
 
 impl Config {
-    // CI branch of bisect execution
-    fn bisect_ci(&self, start: &str, end: &str) -> anyhow::Result<BisectionResult> {
-        eprintln!("bisecting ci builds starting at {start}, ending at {end}");
-        self.bisect_ci_via(start, end)
-    }
-
-    fn bisect_ci_via(&self, start_sha: &str, end_sha: &str) -> anyhow::Result<BisectionResult> {
+    fn bisect_ci_via(
+        &self,
+        start_sha: &str,
+        end_sha: &str,
+        range_desc: &str,
+    ) -> anyhow::Result<BisectionResult> {
         let access = self.args.access.repo();
         let start = access.commit(start_sha)?;
         let end = access.commit(end_sha)?;
@@ -1034,14 +1096,9 @@ impl Config {
             sorted_by_date
         });
 
-        for (j, commit) in commits.iter().enumerate() {
-            eprintln!(
-                "  commit[{}] {}: {}",
-                j,
-                commit.date,
-                commit.summary.split('\n').next().unwrap()
-            )
-        }
+        let report = format_commit_range_report(&commits, range_desc);
+        let divider = "*".repeat(20);
+        eprintln!("{divider}\n\n{report}\n\n{divider}");
 
         self.bisect_ci_in_commits(start_sha, &end.sha, commits)
     }
@@ -1417,5 +1474,51 @@ In the case of a perf regression, run the following command for each PR you susp
             ],
             context.descriptions,
         );
+    }
+
+    #[test]
+    fn test_rollup_description1() {
+        // check that the we correctly parse rollup commit message when trying to pretty print them
+        let desc = r#"Auto merge of #125028 - matthiaskrgr:rollup-3qk782d, r=matthiaskrgr
+
+Rollup of 6 pull requests
+
+Successful merges:
+
+ - #124096 (Clean up users of rust_dbg_call)
+ - #124829 (Enable profiler for armv7-unknown-linux-gnueabihf.)
+
+r? `@ghost`
+`@rustbot` modify labels: rollup"#;
+        let formatted = format_commit_line(desc, false);
+        let expected = r#" - #125028 (Rollup of 6 pull requests) by matthiaskrgr
+   - #124096 (Clean up users of rust_dbg_call)
+   - #124829 (Enable profiler for armv7-unknown-linux-gnueabihf.)"#;
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn test_rollup_description2() {
+        // check that only successful merges get included
+        let desc = r#"Auto merge of #140520 - matthiaskrgr:rollup-7aoqcnp, r=matthiaskrgr
+
+Rollup of 9 pull requests
+
+Successful merges:
+
+ - #134232 (Share the naked asm impl between cg_ssa and cg_clif)
+ - #139624 (Don't allow flattened format_args in const.)
+
+Failed merges:
+
+ - #140374 (Resolve instance for SymFn in global/naked asm)
+
+r? `@ghost`
+`@rustbot` modify labels: rollup"#;
+        let formatted = format_commit_line(desc, false);
+        let expected = r#" - #140520 (Rollup of 9 pull requests) by matthiaskrgr
+   - #134232 (Share the naked asm impl between cg_ssa and cg_clif)
+   - #139624 (Don't allow flattened format_args in const.)"#;
+        assert_eq!(formatted, expected);
     }
 }
