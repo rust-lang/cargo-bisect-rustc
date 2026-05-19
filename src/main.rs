@@ -1178,11 +1178,18 @@ impl Config {
             })
             .collect::<Vec<_>>();
 
-        let Some(found) = toolchains.iter().position(|t| {
-            self.install_and_test(t, &dl_spec)
-                .unwrap_or(Satisfies::Unknown)
-                == Satisfies::Yes
-        }) else {
+        let mut found = None;
+        for (i, t) in toolchains.iter().enumerate() {
+            match self.install_and_test(t, &dl_spec) {
+                Ok(Satisfies::Yes) => {
+                    found = Some(i);
+                    break;
+                }
+                Ok(_) => {}
+                Err(e) => bail!("error: {e}"),
+            }
+        }
+        let Some(found) = found else {
             bail!("none of the toolchains satisfied the predicate");
         };
 
