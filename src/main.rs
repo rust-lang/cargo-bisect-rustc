@@ -146,7 +146,7 @@ struct Opts {
 
     #[arg(
         short, long = "verbose",
-        help = "Multiple -v options increase verbosity, including the output of the bisection command. The maximum is 2.",
+        help = "Multiple -v options increase verbosity. At level 2, the output of the bisection command is shown.",
         action = ArgAction::Count)]
     verbosity: u8,
 
