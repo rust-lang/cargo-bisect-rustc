@@ -107,7 +107,8 @@ Options:
           [default: .]
 
   -v, --verbose...
-          
+          Multiple -v options increase verbosity. At level 2, the output of the bisection command is
+          shown.
 
   -V, --version
           Print version

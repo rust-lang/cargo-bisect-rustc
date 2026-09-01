@@ -144,7 +144,10 @@ struct Opts {
     )]
     timeout: Option<usize>,
 
-    #[arg(short, long = "verbose", action = ArgAction::Count)]
+    #[arg(
+        short, long = "verbose",
+        help = "Multiple -v options increase verbosity. At level 2, the output of the bisection command is shown.",
+        action = ArgAction::Count)]
     verbosity: u8,
 
     #[arg(

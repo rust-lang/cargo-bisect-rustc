@@ -33,7 +33,8 @@ Options:
       --term-new <TERM_NEW>     Text shown when a test does match the condition requested
       --term-old <TERM_OLD>     Text shown when a test fails to match the condition requested
       --test-dir <TEST_DIR>     Root directory for tests [default: .]
-  -v, --verbose...              
+  -v, --verbose...              Multiple -v options increase verbosity. At level 2, the output of
+                                the bisection command is shown.
   -V, --version                 Print version
       --with-dev                Download rustc-dev [default: no download]
       --with-src                Download rust-src [default: no download]
