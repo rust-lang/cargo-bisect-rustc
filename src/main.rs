@@ -369,6 +369,12 @@ impl Config {
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
 
         let mut toolchains_path = home::rustup_home()?;
+        if !toolchains_path.is_dir() {
+            bail!(
+                "`{}` is not a directory. Please install rustup.",
+                toolchains_path.display()
+            );
+        }
 
         // We will download and extract the tarballs into this directory before installing.
         // Using `~/.rustup/tmp` instead of $TMPDIR ensures we could always perform installation by
@@ -379,12 +385,6 @@ impl Config {
         }
 
         toolchains_path.push("toolchains");
-        if !toolchains_path.is_dir() {
-            bail!(
-                "`{}` is not a directory. Please install rustup.",
-                toolchains_path.display()
-            );
-        }
 
         let bounds = Bounds::from_args(&args)?;
 
