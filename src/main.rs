@@ -1145,7 +1145,7 @@ impl Config {
         let comments = get_pr_comments(&pr)?;
         let perf_comment = comments
             .iter()
-            .filter(|c| c.user.login == "rust-timer")
+            .filter(|c| c.user.login == "rust-timer" || c.user.login == "rust-bors[bot]")
             .find(|c| c.body.contains("Perf builds for each rolled up PR"))
             .context("couldn't find perf build comment")?;
         let context = extract_perf_builds(&perf_comment.body)?;
