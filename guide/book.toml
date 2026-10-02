@@ -3,5 +3,5 @@ language = "en"
 title = "cargo-bisect-rustc"
 
 [output.html]
-git-repository-url = "https://github.com/rust-lang/cargo-bisect-rustc/tree/master/guide/src"
-edit-url-template = "https://github.com/rust-lang/cargo-bisect-rustc/edit/master/guide/{path}"
+git-repository-url = "https://github.com/rust-lang/cargo-bisect-rustc/tree/HEAD/guide/src"
+edit-url-template = "https://github.com/rust-lang/cargo-bisect-rustc/edit/HEAD/guide/{path}"
