@@ -103,6 +103,31 @@ impl Toolchain {
         false
     }
 
+    /// If this nightly toolchain is currently installed by rustup, return
+    /// the path to the sysroot
+    fn sysroot_path(&self) -> Result<Option<String>, InstallError> {
+        let ToolchainSpec::Nightly { date } = self.spec else {
+            return Ok(None);
+        };
+        let date = date.format(YYYY_MM_DD);
+        let mut cmd = Command::new("rustc");
+        cmd.arg(format!("+nightly-{date}"))
+            .args(["--print", "sysroot"]);
+        let stdout = cmd
+            .output()
+            .map_err(|err| InstallError::Subcommand {
+                cmd: format!("{cmd:?}"),
+                err,
+            })?
+            .stdout;
+        let output = String::from_utf8_lossy(&stdout);
+        // the output should be the path, terminated by a newline
+        let mut path = output.to_string();
+        let last = path.pop();
+        assert_eq!(last, Some('\n'));
+        Ok(Some(path))
+    }
+
     pub(crate) fn install(
         &self,
         client: &Client,
@@ -124,28 +149,9 @@ impl Toolchain {
             return Ok(());
         }
 
-        if self.is_current_nightly() {
+        if let Some(nightly_path) = self.sysroot_path()? {
             // make link to pre-existing installation
             debug!("installing (via link) {}", self);
-
-            let nightly_path: String = {
-                let mut cmd = Command::new("rustc");
-                cmd.args(["--print", "sysroot"]);
-
-                let stdout = cmd
-                    .output()
-                    .map_err(|err| InstallError::Subcommand {
-                        cmd: format!("{cmd:?}"),
-                        err,
-                    })?
-                    .stdout;
-                let output = String::from_utf8_lossy(&stdout);
-                // the output should be the path, terminated by a newline
-                let mut path = output.to_string();
-                let last = path.pop();
-                assert_eq!(last, Some('\n'));
-                path
-            };
             let mut cmd = Command::new("rustup");
             cmd.args(["toolchain", "link", &self.rustup_name(), &nightly_path]);
             let status = cmd.status().map_err(|err| InstallError::Subcommand {
