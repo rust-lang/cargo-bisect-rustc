@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.6.12
+[v0.6.11...v0.6.12](https://github.com/rust-lang/cargo-bisect-rustc/compare/v0.6.11...v0.6.12)
+
+### Changed
+
+- Handled the various impacts of bors changes in `rust-lang/rust` to ensure rollups can still be transparently bisected.
+  [#410](https://github.com/rust-lang/cargo-bisect-rustc/pull/410), [#438](https://github.com/rust-lang/cargo-bisect-rustc/pull/438)
+- Display and stop on installation error in perf search.
+  [#431](https://github.com/rust-lang/cargo-bisect-rustc/pull/431)
+- Add verbiage to --help.
+  [#437](https://github.com/rust-lang/cargo-bisect-rustc/pull/437)
+- Update to 2024 edition.
+  [#432](https://github.com/rust-lang/cargo-bisect-rustc/pull/432)
+- Updated a bunch of dependencies.
+
+### Fixed
+
+- Prevent naked os error 2 when rustup is missing.
+  [#439](https://github.com/rust-lang/cargo-bisect-rustc/pull/439)
+
 ## v0.6.11
 [v0.6.10...v0.6.11](https://github.com/rust-lang/cargo-bisect-rustc/compare/v0.6.10...v0.6.11)
 
