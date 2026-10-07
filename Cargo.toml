@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 name = "cargo-bisect-rustc"
 readme = "README.md"
 repository = "https://github.com/rust-lang/cargo-bisect-rustc"
-version = "0.6.11"
+version = "0.6.12"
 edition = "2024"
 
 [dependencies]
