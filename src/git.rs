@@ -5,7 +5,7 @@ const RUST_SRC_REPO: Option<&str> = option_env!("RUST_SRC_REPO");
 
 use std::env;
 use std::ops::Deref;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use chrono::{TimeZone, Utc};
@@ -72,6 +72,15 @@ fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> anyhow::Result<Git2Comm
     bail!("Could not find a commit for revision specifier '{}'", rev)
 }
 
+pub(crate) fn repo_path() -> PathBuf {
+    match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
+        (Some(repo), _) => repo.into(),
+        (None, _) if Path::new("rust.git").exists() => "rust.git".into(),
+        (None, Some(repo)) => repo.into(),
+        _ => "rust.git".into(),
+    }
+}
+
 fn get_repo() -> anyhow::Result<RustcRepo> {
     fn open(path: &Path) -> anyhow::Result<(Repository, String)> {
         eprintln!("opening existing repository at {:?}", path);
@@ -95,19 +104,17 @@ fn get_repo() -> anyhow::Result<RustcRepo> {
         Ok((repo, origin_remote))
     }
 
-    let loc = Path::new("rust.git");
-    let (repository, origin_remote) = match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
-        (Some(repo), _) => open(Path::new(&repo)),
-        (None, _) if loc.exists() => open(loc),
-        (None, Some(repo)) => open(Path::new(repo)),
-        _ => {
+    let loc = repo_path();
+    let (repository, origin_remote) =
+        if loc.exists() || env::var_os("RUST_SRC_REPO").is_some() || RUST_SRC_REPO.is_some() {
+            open(&loc)
+        } else {
             eprintln!("cloning rust repository");
             Ok((
-                RepoBuilder::new().bare(true).clone(RUST_SRC_URL, loc)?,
+                RepoBuilder::new().bare(true).clone(RUST_SRC_URL, &loc)?,
                 "origin".to_string(),
             ))
-        }
-    }?;
+        }?;
 
     Ok(RustcRepo {
         repository,

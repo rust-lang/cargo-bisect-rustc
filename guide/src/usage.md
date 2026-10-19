@@ -17,8 +17,32 @@ Once it finds the nightly where it started to fail, `cargo-bisect-rustc` will th
 The Rust project keeps the builds of every merged PR for the last 167 days.
 If the nightly is within that range, then it will bisect between those PRs.
 
+
 And even further, if the regression is in a [rollup PR], then it will bisect the individual PRs within the rollup.
 This final bisection is only available for `x86_64-unknown-linux-gnu` since it is using the builds made for the [rustc performance tracker].
+
+Pass `--allow-source` to also bisect commits whose CI artifacts have expired:
+
+```sh
+cargo bisect-rustc --start=2025-02-06 --end=2025-02-07 --access=checkout --allow-source
+```
+
+The bisector first tries downloading each toolchain. If a commit's artifact is
+missing, it builds that commit (including LLVM) from source.
+It requires the [Rust build prerequisites], and is disabled by default due to high resource usage.
+
+`rustc`, standard library and `Cargo` components are supported; cross-compilation,
+alt builds and extra components are not.
+
+Source builds require `--access=checkout` and an existing Rust checkout to be available.
+
+`--source-cache <directory>` will open a new detached worktree at that location instead of
+changing your existing checked out revision.
+
+The source cache is not automatically removed, so removing the worktree
+(or deleting the `build`) directory is required to recover disk space.
+
+[Rust build prerequisites]: https://rustc-dev-guide.rust-lang.org/building/prerequisites.html
 
 [rollup PR]: https://forge.rust-lang.org/release/rollups.html
 [rustc performance tracker]: https://perf.rust-lang.org/

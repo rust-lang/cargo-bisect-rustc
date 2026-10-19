@@ -25,6 +25,7 @@ mod git;
 mod github;
 mod least_satisfying;
 mod repo_access;
+mod source;
 mod toolchains;
 
 use crate::bounds::{Bound, Bounds};
@@ -125,6 +126,20 @@ struct Opts {
 
     #[arg(short, long = "component", help = "additional components to install")]
     components: Vec<String>,
+
+    #[arg(
+        long,
+        help = "Allow source builds if CI has expired (requires --access=checkout)"
+    )]
+    allow_source: bool,
+
+    #[arg(
+        long,
+        requires = "allow_source",
+        value_name = "DIR",
+        help = "Worktree directory for source builds [default: existing checkout]"
+    )]
+    source_cache: Option<PathBuf>,
 
     #[arg(
         long,
@@ -366,6 +381,14 @@ struct Config {
 
 impl Config {
     fn from_args(args: Opts) -> anyhow::Result<Config> {
+        if args.allow_source {
+            anyhow::ensure!(
+                matches!(args.access, Access::Checkout),
+                "--allow-source requires --access=checkout"
+            );
+            git2::Repository::open(git::repo_path())
+                .context("source builds require an existing Rust repository")?;
+        }
         let target = args.target.clone().unwrap_or_else(|| args.host.clone());
 
         let mut toolchains_path = home::rustup_home()?;
@@ -832,8 +855,10 @@ impl Config {
             eprintln!(
                 "{remaining} versions remaining to test after this (roughly {estimate} steps)"
             );
-            self.install_and_test(t, dl_spec)
-                .unwrap_or(Satisfies::Unknown)
+            self.install_and_test(t, dl_spec).unwrap_or_else(|error| {
+                eprintln!("unable to test {t}: {error}");
+                Satisfies::Unknown
+            })
         })
     }
 }
@@ -1058,7 +1083,9 @@ impl Config {
         mut commits: Vec<Commit>,
     ) -> anyhow::Result<BisectionResult> {
         let dl_spec = DownloadParams::for_ci(self);
-        commits.retain(|c| today() - c.date < Duration::days(167));
+        if !self.args.allow_source {
+            commits.retain(|c| today() - c.date < Duration::days(167));
+        }
 
         if commits.is_empty() {
             bail!(

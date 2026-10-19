@@ -26,6 +26,8 @@ const CI_SERVER: &str = "https://ci-artifacts.rust-lang.org";
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum InstallError {
+    #[error("Could not build toolchain from source: {0:#}")]
+    Source(#[source] anyhow::Error),
     #[error("Could not find {spec}; url: {url}")]
     NotFound { url: String, spec: ToolchainSpec },
     #[error("Could not download toolchain: {0}")]
@@ -104,6 +106,21 @@ impl Toolchain {
     }
 
     pub(crate) fn install(
+        &self,
+        client: &Client,
+        dl_params: &DownloadParams,
+    ) -> Result<(), InstallError> {
+        match self.install_download(client, dl_params) {
+            Err(InstallError::NotFound { .. })
+                if dl_params.allow_source && matches!(self.spec, ToolchainSpec::Ci { .. }) =>
+            {
+                crate::source::install(self, dl_params).map_err(InstallError::Source)
+            }
+            result => result,
+        }
+    }
+
+    fn install_download(
         &self,
         client: &Client,
         dl_params: &DownloadParams,
@@ -417,10 +434,13 @@ impl fmt::Display for ToolchainSpec {
 #[derive(Clone, Debug)]
 pub(crate) struct DownloadParams {
     url_prefix: String,
-    tmp_dir: PathBuf,
-    install_dir: PathBuf,
+    pub(crate) tmp_dir: PathBuf,
+    pub(crate) install_dir: PathBuf,
     components: Vec<String>,
     force_install: bool,
+    pub(crate) allow_source: bool,
+    pub(crate) source_cache: Option<PathBuf>,
+    pub(crate) source_components_supported: bool,
 }
 
 impl DownloadParams {
@@ -459,7 +479,16 @@ impl DownloadParams {
             install_dir: cfg.toolchains_path.clone(),
             components,
             force_install: cfg.args.force_install,
+            allow_source: cfg.args.allow_source,
+            source_cache: cfg.args.source_cache.clone(),
+            source_components_supported: !cfg.args.with_dev
+                && !cfg.args.with_src
+                && cfg.args.components.is_empty(),
         }
+    }
+
+    pub(crate) fn includes_cargo(&self) -> bool {
+        self.components.iter().any(|c| c == "cargo")
     }
 }
 
