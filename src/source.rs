@@ -56,6 +56,9 @@ fn quote(path: &Path) -> anyhow::Result<String> {
 }
 
 fn bootstrap(repo: &Path, config: &Path, paths: &[&str]) -> anyhow::Result<()> {
+    // Older LLVM headers rely on transitive includes removed in GCC 15.
+    let mut cxxflags = env::var_os("CXXFLAGS").unwrap_or_default();
+    cxxflags.push(" -include cstdint");
     run(Command::new("python3")
         .current_dir(repo)
         .arg("x.py")
@@ -64,6 +67,7 @@ fn bootstrap(repo: &Path, config: &Path, paths: &[&str]) -> anyhow::Result<()> {
         .arg(config)
         .args(["--stage", "2"])
         .args(paths)
+        .env("CXXFLAGS", cxxflags)
         // Do not inherit the toolchain being tested or the reproducer's flags.
         .env_remove("RUSTUP_TOOLCHAIN")
         .env_remove("RUSTC")

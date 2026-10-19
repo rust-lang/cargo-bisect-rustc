@@ -7,7 +7,7 @@ use std::env;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use chrono::{TimeZone, Utc};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
@@ -154,6 +154,31 @@ pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
     let repo = get_repo()?;
     let mut rev = lookup_rev(&repo, sha)?;
     Ok(Commit::from_git2_commit(&mut rev))
+}
+
+pub(crate) fn rollup_commits(repo: &Repository, sha: &str) -> anyhow::Result<Vec<Commit>> {
+    let rollup = repo.find_commit(sha.parse()?)?;
+    if !rollup.message()?.contains("Rollup of ") {
+        return Ok(Vec::new());
+    }
+    let base = repo.merge_base(rollup.parent_id(0)?, rollup.parent_id(1)?)?;
+    let mut current = rollup.parent(1)?;
+    let mut commits = Vec::new();
+    while current.id() != base {
+        ensure!(
+            current
+                .summary()?
+                .unwrap_or_default()
+                .starts_with("Rollup merge of #"),
+            "unexpected commit {} in rollup history",
+            current.id()
+        );
+        commits.push(Commit::from_git2_commit(&mut current));
+        current = current.parent(0)?;
+    }
+    ensure!(!commits.is_empty(), "rollup contains no PR merges");
+    commits.reverse();
+    Ok(commits)
 }
 
 /// Returns the bors merge commits between the two specified boundaries

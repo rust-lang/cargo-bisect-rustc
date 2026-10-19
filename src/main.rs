@@ -477,10 +477,10 @@ impl Config {
         Ok(())
     }
 
-    fn do_perf_search(&self, result: &BisectionResult) {
+    fn do_perf_search(&self, result: &BisectionResult) -> anyhow::Result<()> {
         let toolchain = &result.searched[result.found];
         match self.search_perf_builds(toolchain) {
-            Ok(result) => {
+            Ok(Some(result)) => {
                 let bisection = result.bisection;
                 let url = format!(
                     "https://github.com/rust-lang/rust/commit/{}",
@@ -494,19 +494,26 @@ impl Config {
                 )
                 .red()
                 .bold();
-                eprintln!(
-                    "Regression in {url}. Note that if it is a legacy rollup build, it might be available in {legacy_url}."
-                );
+                if self.args.allow_source {
+                    eprintln!("Regression in {url}.");
+                } else {
+                    eprintln!(
+                        "Regression in {url}. Note that if it is a legacy rollup build, it might be available in {legacy_url}."
+                    );
+                }
 
                 // In case the bisected commit has been garbage-collected by github, we show its
                 // additional context here.
                 let context = &result.toolchain_descriptions[bisection.found];
                 eprintln!("The PR introducing the regression in this rollup is {context}");
             }
+            Ok(None) => {}
+            Err(e) if self.args.allow_source => return Err(e),
             Err(e) => {
                 eprintln!("ERROR: {e}");
             }
         }
+        Ok(())
     }
 
     // bisection entry point
@@ -514,7 +521,7 @@ impl Config {
         if let Bounds::Commits { start, end } = &self.bounds {
             let bisection_result = self.bisect_ci(start, end)?;
             self.print_results(&bisection_result);
-            self.do_perf_search(&bisection_result);
+            self.do_perf_search(&bisection_result)?;
         } else {
             let nightly_bisection_result = self.bisect_nightlies()?;
             self.print_results(&nightly_bisection_result);
@@ -549,7 +556,7 @@ impl Config {
                 let ci_bisection_result = self.bisect_ci_via(&working_commit, &bad_commit)?;
 
                 self.print_results(&ci_bisection_result);
-                self.do_perf_search(&ci_bisection_result);
+                self.do_perf_search(&ci_bisection_result)?;
                 print_final_report(self, &nightly_bisection_result, &ci_bisection_result);
             }
         }
@@ -1153,8 +1160,10 @@ impl Config {
         })
     }
 
-    fn search_perf_builds(&self, toolchain: &Toolchain) -> anyhow::Result<PerfBisectionResult> {
-        eprintln!("Attempting to search unrolled perf builds");
+    fn search_perf_builds(
+        &self,
+        toolchain: &Toolchain,
+    ) -> anyhow::Result<Option<PerfBisectionResult>> {
         let Toolchain {
             spec: ToolchainSpec::Ci { commit, .. },
             ..
@@ -1162,6 +1171,24 @@ impl Config {
         else {
             bail!("not a ci commit");
         };
+        if self.args.allow_source {
+            let repo = git2::Repository::open(git::repo_path())?;
+            let commits = git::rollup_commits(&repo, commit)?;
+            if commits.is_empty() {
+                return Ok(None);
+            }
+            eprintln!("Attempting to search rolled-up commits with source builds");
+            let shas = commits.iter().map(|c| c.sha.as_str()).collect::<Vec<_>>();
+            let bisection = self.linear_in_commits(&shas)?;
+            return Ok(Some(PerfBisectionResult {
+                bisection,
+                toolchain_descriptions: commits
+                    .into_iter()
+                    .map(|c| c.summary.trim_start_matches("Rollup merge of ").to_owned())
+                    .collect(),
+            }));
+        }
+        eprintln!("Attempting to search unrolled perf builds");
         let summary = get_commit(commit)?.summary;
         if !summary.starts_with("Auto merge of #") && !summary.contains("Rollup of") {
             bail!("not a rollup pr");
@@ -1184,10 +1211,10 @@ impl Config {
         eprintln!("Found commits {short_sha:?}");
 
         let bisection = self.linear_in_commits(&context.builds)?;
-        Ok(PerfBisectionResult {
+        Ok(Some(PerfBisectionResult {
             bisection,
             toolchain_descriptions: context.descriptions,
-        })
+        }))
     }
 
     fn linear_in_commits(&self, commits: &[&str]) -> anyhow::Result<BisectionResult> {
