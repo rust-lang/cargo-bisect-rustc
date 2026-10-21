@@ -5,9 +5,9 @@ const RUST_SRC_REPO: Option<&str> = option_env!("RUST_SRC_REPO");
 
 use std::env;
 use std::ops::Deref;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use chrono::{TimeZone, Utc};
 use git2::build::RepoBuilder;
 use git2::{Commit as Git2Commit, Repository};
@@ -72,6 +72,15 @@ fn lookup_rev<'rev>(repo: &'rev RustcRepo, rev: &str) -> anyhow::Result<Git2Comm
     bail!("Could not find a commit for revision specifier '{}'", rev)
 }
 
+pub(crate) fn repo_path() -> PathBuf {
+    match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
+        (Some(repo), _) => repo.into(),
+        (None, _) if Path::new("rust.git").exists() => "rust.git".into(),
+        (None, Some(repo)) => repo.into(),
+        _ => "rust.git".into(),
+    }
+}
+
 fn get_repo() -> anyhow::Result<RustcRepo> {
     fn open(path: &Path) -> anyhow::Result<(Repository, String)> {
         eprintln!("opening existing repository at {:?}", path);
@@ -95,19 +104,17 @@ fn get_repo() -> anyhow::Result<RustcRepo> {
         Ok((repo, origin_remote))
     }
 
-    let loc = Path::new("rust.git");
-    let (repository, origin_remote) = match (env::var_os("RUST_SRC_REPO"), RUST_SRC_REPO) {
-        (Some(repo), _) => open(Path::new(&repo)),
-        (None, _) if loc.exists() => open(loc),
-        (None, Some(repo)) => open(Path::new(repo)),
-        _ => {
+    let loc = repo_path();
+    let (repository, origin_remote) =
+        if loc.exists() || env::var_os("RUST_SRC_REPO").is_some() || RUST_SRC_REPO.is_some() {
+            open(&loc)
+        } else {
             eprintln!("cloning rust repository");
             Ok((
-                RepoBuilder::new().bare(true).clone(RUST_SRC_URL, loc)?,
+                RepoBuilder::new().bare(true).clone(RUST_SRC_URL, &loc)?,
                 "origin".to_string(),
             ))
-        }
-    }?;
+        }?;
 
     Ok(RustcRepo {
         repository,
@@ -147,6 +154,31 @@ pub(crate) fn get_commit(sha: &str) -> anyhow::Result<Commit> {
     let repo = get_repo()?;
     let mut rev = lookup_rev(&repo, sha)?;
     Ok(Commit::from_git2_commit(&mut rev))
+}
+
+pub(crate) fn rollup_commits(repo: &Repository, sha: &str) -> anyhow::Result<Vec<Commit>> {
+    let rollup = repo.find_commit(sha.parse()?)?;
+    if !rollup.message()?.contains("Rollup of ") {
+        return Ok(Vec::new());
+    }
+    let base = repo.merge_base(rollup.parent_id(0)?, rollup.parent_id(1)?)?;
+    let mut current = rollup.parent(1)?;
+    let mut commits = Vec::new();
+    while current.id() != base {
+        ensure!(
+            current
+                .summary()?
+                .unwrap_or_default()
+                .starts_with("Rollup merge of #"),
+            "unexpected commit {} in rollup history",
+            current.id()
+        );
+        commits.push(Commit::from_git2_commit(&mut current));
+        current = current.parent(0)?;
+    }
+    ensure!(!commits.is_empty(), "rollup contains no PR merges");
+    commits.reverse();
+    Ok(commits)
 }
 
 /// Returns the bors merge commits between the two specified boundaries

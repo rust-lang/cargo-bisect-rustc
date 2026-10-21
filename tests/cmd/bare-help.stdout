@@ -16,6 +16,9 @@ Options:
           [default: github]
           [possible values: checkout, github]
 
+      --allow-source
+          Allow source builds if CI has expired (requires --access=checkout)
+
       --by-commit
           Bisect via commit artifacts
 
@@ -84,6 +87,9 @@ Options:
 
       --script <SCRIPT>
           Script replacement for `cargo build` command
+
+      --source-cache <DIR>
+          Worktree directory for source builds [default: existing checkout]
 
       --start <START>
           Left bound for search (*without* regression). You can use a date (YYYY-MM-DD), git tag

@@ -9,6 +9,7 @@ Options:
   -a, --alt                     Download the alt build instead of normal build
       --access <ACCESS>         How to access Rust git repository [default: github] [possible
                                 values: checkout, github]
+      --allow-source            Allow source builds if CI has expired (requires --access=checkout)
       --by-commit               Bisect via commit artifacts
   -c, --component <COMPONENTS>  additional components to install
       --end <END>               Right bound for search (*with* regression). You can use a date
@@ -25,6 +26,7 @@ Options:
       --regress <REGRESS>       Custom regression definition [default: error] [possible values:
                                 error, success, ice, non-ice, non-error]
       --script <SCRIPT>         Script replacement for `cargo build` command
+      --source-cache <DIR>      Worktree directory for source builds [default: existing checkout]
       --start <START>           Left bound for search (*without* regression). You can use a date
                                 (YYYY-MM-DD), git tag name (e.g. 1.58.0) or git commit SHA.
   -t, --timeout <TIMEOUT>       Assume failure after specified number of seconds (for bisecting
