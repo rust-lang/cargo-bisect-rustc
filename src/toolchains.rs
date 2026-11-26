@@ -190,13 +190,37 @@ impl Toolchain {
             );
 
         for component in components {
-            download_tarball(
-                client,
-                &component,
-                &format!("{}/{location}/{component}.tar", dl_params.url_prefix),
-                tmpdir.path(),
-            )
-            .map_err(|e| {
+            let download_component = |component: &str| {
+                download_tarball(
+                    client,
+                    &component,
+                    &format!("{}/{location}/{component}.tar", dl_params.url_prefix),
+                    tmpdir.path(),
+                )
+            };
+
+            let mut res = download_component(&component);
+
+            // When installing a component fails due to a missing tarball, it could be due to
+            // subtleties in the rustup components names and aliases instead. The most common case
+            // where this happens is installing a preview component, like cranelift, that the
+            // published component manifest has under a different canonical url. So we have a
+            // fallback for that: we try to download the component without the preview suffix just
+            // in case. This fixes failing to download preview components like cranelift,
+            // llvm-tools, etc.
+            // FIXME: we could better support the rustup components by looking at the toolchain's
+            // components listed in `channel-rust-nightly.toml`, see if the requested component is
+            // marked available and get the actual download url from the expected package
+            // description.
+            if matches!(res, Err(DownloadError::NotFound(_))) && component.contains("-preview-") {
+                // For example, `rustc-codegen-cranelift-preview-nightly-aarch64-apple-darwin` is
+                // available as `rustc-codegen-cranelift-nightly-aarch64-apple-darwin.tar.gz` in
+                // https://static.rust-lang.org/dist/2026-10-04/channel-rust-nightly.toml.
+                let fallback = component.replace("-preview", "");
+                res = download_component(&fallback);
+            }
+
+            res.map_err(|e| {
                 if let DownloadError::NotFound(url) = e {
                     InstallError::NotFound {
                         url,
